@@ -55,12 +55,16 @@ PostgreSQL 使用 Docker Compose 部署，数据目录为：
 
 数据库只绑定服务器本机地址 `127.0.0.1:5432`，不直接暴露公网。服务器上的真实数据库密码保存在 `/opt/mediapeople/.env`，仓库只保留 `.env.example`。
 
+当前后端 API 会把完整业务状态保存到 PostgreSQL 的 `app_state.data` JSONB 字段中。前端启动时优先读取 `/api/state`，修改资料、VIP、牵线、机构、红娘和分成时会同步写回数据库；如果 API 暂时不可用，会降级保存到浏览器 `localStorage`。
+
 常用维护命令：
 
 ```bash
 cd /opt/mediapeople
 docker compose up -d postgres
+docker compose up -d api web
 docker exec mediapeople-postgres pg_isready -U mediapeople -d mediapeople
+docker exec mediapeople-postgres psql -U mediapeople -d mediapeople -c "select updated_at from app_state where id = 1;"
 docker exec mediapeople-postgres pg_dump -U mediapeople mediapeople > backup/postgres/mediapeople-$(date +%F).sql
 ```
 

@@ -1,5 +1,6 @@
 const STORAGE_KEY = "mediapeople-dating-demo-v1";
 const VIP_PRICE = 399;
+const API_BASE = "/api";
 
 const seedState = {
   currentUserId: "u1",
@@ -173,7 +174,9 @@ const seedState = {
   deals: [{ id: "d1", requestId: null, amount: 399, createdAt: "2026-06-10" }],
 };
 
-let state = loadState();
+let state = structuredClone(seedState);
+let apiAvailable = false;
+let syncTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -193,6 +196,74 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (apiAvailable) {
+    scheduleRemoteSync();
+  }
+}
+
+async function loadRemoteState() {
+  const response = await fetch(`${API_BASE}/state`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Failed to load remote state: ${response.status}`);
+  }
+  apiAvailable = true;
+  return response.json();
+}
+
+function scheduleRemoteSync() {
+  window.clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/state`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to sync remote state: ${response.status}`);
+      }
+    } catch (error) {
+      apiAvailable = false;
+      console.warn(error);
+      showToast("数据库同步失败，已临时保存到本机浏览器");
+    }
+  }, 120);
+}
+
+async function resetState() {
+  if (apiAvailable) {
+    try {
+      const response = await fetch(`${API_BASE}/reset`, { method: "POST" });
+      if (!response.ok) {
+        throw new Error(`Failed to reset remote state: ${response.status}`);
+      }
+      state = await response.json();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast("演示数据已重置");
+      return;
+    } catch (error) {
+      apiAvailable = false;
+      console.warn(error);
+    }
+  }
+  state = structuredClone(seedState);
+  saveState();
+  renderAll();
+  showToast("演示数据已重置");
+}
+
+async function initApp() {
+  try {
+    state = await loadRemoteState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    apiAvailable = false;
+    console.warn(error);
+    state = loadState();
+    showToast("暂未连接数据库，使用本机演示数据");
+  }
+  renderAll();
 }
 
 function uid(prefix) {
@@ -677,13 +748,8 @@ function bindEvents() {
   $("#agencyForm").addEventListener("submit", addAgency);
   $("#matchmakerForm").addEventListener("submit", addMatchmaker);
   $("#seedDealBtn").addEventListener("click", seedDeal);
-  $("#resetDataBtn").addEventListener("click", () => {
-    state = structuredClone(seedState);
-    saveState();
-    renderAll();
-    showToast("演示数据已重置");
-  });
+  $("#resetDataBtn").addEventListener("click", resetState);
 }
 
 bindEvents();
-renderAll();
+initApp();
