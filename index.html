@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>缘定传媒人 - 单身交友小程序与管理后台</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">缘</div>
+          <div>
+            <h1>缘定传媒人</h1>
+            <p>单身交友业务中台</p>
+          </div>
+        </div>
+        <nav class="main-nav" aria-label="主导航">
+          <button class="nav-item active" data-view="mini">小程序端</button>
+          <button class="nav-item" data-view="matchmaker">红娘工作台</button>
+          <button class="nav-item" data-view="admin">管理后台</button>
+        </nav>
+        <div class="sidebar-panel">
+          <span class="panel-kicker">当前演示</span>
+          <strong id="currentPersona">客户：林安</strong>
+          <p>数据保存在本机浏览器，可随时重置体验。</p>
+          <button class="ghost-button" id="resetDataBtn" type="button">重置演示数据</button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <section class="view active" id="miniView">
+          <div class="phone-frame">
+            <header class="phone-header">
+              <div>
+                <span class="eyebrow">小程序</span>
+                <h2>找对象</h2>
+              </div>
+              <div class="vip-badge" id="vipState">普通用户</div>
+            </header>
+
+            <div class="tabs compact-tabs" role="tablist" aria-label="小程序功能">
+              <button class="tab active" data-mini-tab="discover">筛选</button>
+              <button class="tab" data-mini-tab="profile">资料</button>
+              <button class="tab" data-mini-tab="vip">会员</button>
+              <button class="tab" data-mini-tab="requests">牵线</button>
+            </div>
+
+            <section class="mini-tab active" id="discoverTab">
+              <div class="filter-bar">
+                <label>
+                  <span>性别</span>
+                  <select id="genderFilter">
+                    <option value="女">看女生</option>
+                    <option value="男">看男生</option>
+                  </select>
+                </label>
+                <label>
+                  <span>城市</span>
+                  <select id="cityFilter"></select>
+                </label>
+                <label>
+                  <span>年龄</span>
+                  <select id="ageFilter">
+                    <option value="all">不限</option>
+                    <option value="22-28">22-28</option>
+                    <option value="29-35">29-35</option>
+                    <option value="36-45">36-45</option>
+                  </select>
+                </label>
+              </div>
+              <div id="profileList" class="profile-list"></div>
+            </section>
+
+            <section class="mini-tab" id="profileTab">
+              <form class="form-grid" id="profileForm">
+                <label>
+                  <span>姓名</span>
+                  <input name="name" required />
+                </label>
+                <label>
+                  <span>性别</span>
+                  <select name="gender">
+                    <option>男</option>
+                    <option>女</option>
+                  </select>
+                </label>
+                <label>
+                  <span>年龄</span>
+                  <input name="age" type="number" min="18" max="70" required />
+                </label>
+                <label>
+                  <span>城市</span>
+                  <input name="city" required />
+                </label>
+                <label>
+                  <span>职业</span>
+                  <input name="job" required />
+                </label>
+                <label>
+                  <span>微信</span>
+                  <input name="wechat" required />
+                </label>
+                <label class="wide">
+                  <span>自我介绍</span>
+                  <textarea name="bio" rows="3" required></textarea>
+                </label>
+                <label class="wide">
+                  <span>对另一半的要求</span>
+                  <textarea name="requirements" rows="3" required></textarea>
+                </label>
+                <button class="primary-button wide" type="submit">保存资料</button>
+              </form>
+            </section>
+
+            <section class="mini-tab" id="vipTab">
+              <div class="pay-card">
+                <div>
+                  <span class="eyebrow">扫码付费</span>
+                  <h3>成为会员后解锁择偶要求</h3>
+                  <p>输入红娘推荐码，模拟扫码支付 399 元，系统会记录推广红娘并生成分成。</p>
+                </div>
+                <div class="qr-box" aria-label="模拟付款二维码">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+                <label>
+                  <span>红娘推荐码</span>
+                  <input id="referralCodeInput" placeholder="如 HM-LILI" />
+                </label>
+                <button class="primary-button" id="becomeVipBtn" type="button">模拟支付并开通</button>
+              </div>
+            </section>
+
+            <section class="mini-tab" id="requestsTab">
+              <div class="section-title">
+                <h3>我的牵线请求</h3>
+                <span id="requestCount">0 条</span>
+              </div>
+              <div id="myRequests" class="request-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="matchmakerView">
+          <div class="toolbar">
+            <div>
+              <span class="eyebrow">红娘工作台</span>
+              <h2>牵线通知与客户联系</h2>
+            </div>
+            <label class="inline-field">
+              <span>当前红娘</span>
+              <select id="matchmakerSelect"></select>
+            </label>
+          </div>
+          <div class="workbench-grid">
+            <section class="panel">
+              <div class="section-title">
+                <h3>应用通知</h3>
+                <span id="notificationCount">0 条待处理</span>
+              </div>
+              <div id="notificationList" class="request-list"></div>
+            </section>
+            <section class="panel">
+              <div class="section-title">
+                <h3>双方隐藏联系信息</h3>
+                <span>仅红娘可见</span>
+              </div>
+              <div id="contactPanel" class="contact-panel"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="adminView">
+          <div class="toolbar">
+            <div>
+              <span class="eyebrow">管理后台</span>
+              <h2>客户、红娘、机构与分成</h2>
+            </div>
+            <button class="primary-button" id="seedDealBtn" type="button">模拟一笔成交</button>
+          </div>
+
+          <div class="metrics-grid" id="metricsGrid"></div>
+
+          <div class="admin-grid">
+            <section class="panel">
+              <div class="section-title">
+                <h3>分成比例</h3>
+                <span>合计需为 100%</span>
+              </div>
+              <form class="split-form" id="splitForm">
+                <label>
+                  <span>介绍推广费</span>
+                  <input name="promo" type="number" min="0" max="100" />
+                </label>
+                <label>
+                  <span>红娘牵线费</span>
+                  <input name="matchmaker" type="number" min="0" max="100" />
+                </label>
+                <label>
+                  <span>平台服务费</span>
+                  <input name="platform" type="number" min="0" max="100" />
+                </label>
+                <button class="primary-button" type="submit">保存分成</button>
+              </form>
+              <div id="splitPreview" class="split-preview"></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h3>添加机构</h3>
+                <span id="agencyCount">0 家</span>
+              </div>
+              <form class="stack-form" id="agencyForm">
+                <input name="name" placeholder="机构名称" required />
+                <input name="city" placeholder="所在城市" required />
+                <button class="secondary-button" type="submit">添加机构</button>
+              </form>
+              <div id="agencyList" class="plain-list"></div>
+            </section>
+
+            <section class="panel">
+              <div class="section-title">
+                <h3>添加红娘</h3>
+                <span id="matchmakerCount">0 位</span>
+              </div>
+              <form class="stack-form" id="matchmakerForm">
+                <input name="name" placeholder="红娘姓名" required />
+                <select name="agencyId" required></select>
+                <input name="code" placeholder="推荐码，如 HM-NANA" required />
+                <button class="secondary-button" type="submit">添加红娘</button>
+              </form>
+              <div id="matchmakerList" class="plain-list"></div>
+            </section>
+
+            <section class="panel wide-panel">
+              <div class="section-title">
+                <h3>客户信息</h3>
+                <span id="customerCount">0 位</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>客户</th>
+                      <th>城市</th>
+                      <th>会员</th>
+                      <th>推荐红娘</th>
+                      <th>微信</th>
+                    </tr>
+                  </thead>
+                  <tbody id="customerRows"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel wide-panel">
+              <div class="section-title">
+                <h3>图表概览</h3>
+                <span>客户、成交、金额</span>
+              </div>
+              <div id="chartPanel" class="chart-panel"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
