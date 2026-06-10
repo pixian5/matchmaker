@@ -176,7 +176,6 @@ const seedState = {
 
 let state = structuredClone(seedState);
 let apiAvailable = false;
-let syncTimer = null;
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -197,7 +196,7 @@ function loadState() {
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (apiAvailable) {
-    scheduleRemoteSync();
+    syncRemoteState();
   }
 }
 
@@ -210,24 +209,24 @@ async function loadRemoteState() {
   return response.json();
 }
 
-function scheduleRemoteSync() {
-  window.clearTimeout(syncTimer);
-  syncTimer = window.setTimeout(async () => {
-    try {
-      const response = await fetch(`${API_BASE}/state`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state),
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to sync remote state: ${response.status}`);
-      }
-    } catch (error) {
-      apiAvailable = false;
-      console.warn(error);
+async function syncRemoteState({ keepalive = false, notify = true } = {}) {
+  try {
+    const response = await fetch(`${API_BASE}/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state),
+      keepalive,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to sync remote state: ${response.status}`);
+    }
+  } catch (error) {
+    apiAvailable = false;
+    console.warn(error);
+    if (notify) {
       showToast("数据库同步失败，已临时保存到本机浏览器");
     }
-  }, 120);
+  }
 }
 
 async function resetState() {
@@ -753,3 +752,9 @@ function bindEvents() {
 
 bindEvents();
 initApp();
+
+window.addEventListener("pagehide", () => {
+  if (apiAvailable) {
+    syncRemoteState({ keepalive: true, notify: false });
+  }
+});
