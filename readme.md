@@ -47,6 +47,23 @@ http://uk.sbbz.tech:8095/
 docker compose up -d web
 ```
 
+PostgreSQL 使用 Docker Compose 部署，数据目录为：
+
+```text
+/opt/mediapeople/data/postgres
+```
+
+数据库只绑定服务器本机地址 `127.0.0.1:5432`，不直接暴露公网。服务器上的真实数据库密码保存在 `/opt/mediapeople/.env`，仓库只保留 `.env.example`。
+
+常用维护命令：
+
+```bash
+cd /opt/mediapeople
+docker compose up -d postgres
+docker exec mediapeople-postgres pg_isready -U mediapeople -d mediapeople
+docker exec mediapeople-postgres pg_dump -U mediapeople mediapeople > backup/postgres/mediapeople-$(date +%F).sql
+```
+
 ## 后续开发建议
 
 - 小程序端可迁移到微信小程序原生或 uni-app，把 `users`、`requests`、`deals` 等本地数据替换为接口。

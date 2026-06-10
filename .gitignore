@@ -1,4 +1,7 @@
 .DS_Store
+.env
 .venv/
+backup/
+data/
 node_modules/
 dist/
