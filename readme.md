@@ -27,6 +27,26 @@ open /Users/x/code/mediapeople/index.html
 
 数据保存在浏览器 `localStorage` 中，可在页面左下角点击“重置演示数据”恢复初始状态。
 
+## 服务器部署
+
+当前测试部署地址：
+
+```text
+http://uk.sbbz.tech:8095/
+```
+
+服务器部署目录：
+
+```text
+/opt/mediapeople
+```
+
+使用 Docker Compose 启动 Nginx 静态站点：
+
+```bash
+docker compose up -d web
+```
+
 ## 后续开发建议
 
 - 小程序端可迁移到微信小程序原生或 uni-app，把 `users`、`requests`、`deals` 等本地数据替换为接口。
