@@ -186,16 +186,40 @@ let apiAvailable = false;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+function ensureStateDefaults(s) {
+  if (!s) return s;
+  if (!s.users) s.users = [];
+  s.users.forEach((u) => {
+    if (u.phone === undefined) u.phone = null;
+    if (u.email === undefined) u.email = null;
+    if (u.realNameVerified === undefined) u.realNameVerified = false;
+    if (u.realName === undefined) u.realName = null;
+    if (u.idCard === undefined) u.idCard = null;
+  });
+  // Ensure u1 has phone and email, u2 has only email (no phone) to test phone supplement
+  const u1 = s.users.find((u) => u.id === "u1");
+  if (u1) {
+    if (!u1.phone) u1.phone = "13800000001";
+    if (!u1.email) u1.email = "linan@example.com";
+  }
+  const u2 = s.users.find((u) => u.id === "u2");
+  if (u2) {
+    if (!u2.email) u2.email = "qing@example.com";
+    if (u2.phone === undefined || u2.phone === "13800000002") u2.phone = null; // force null for u2 to test supplement
+  }
+  return s;
+}
+
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) {
-    return structuredClone(seedState);
+    return ensureStateDefaults(structuredClone(seedState));
   }
 
   try {
-    return JSON.parse(saved);
+    return ensureStateDefaults(JSON.parse(saved));
   } catch {
-    return structuredClone(seedState);
+    return ensureStateDefaults(structuredClone(seedState));
   }
 }
 
@@ -212,7 +236,8 @@ async function loadRemoteState() {
     throw new Error(`Failed to load remote state: ${response.status}`);
   }
   apiAvailable = true;
-  return response.json();
+  const data = await response.json();
+  return ensureStateDefaults(data);
 }
 
 async function syncRemoteState({ keepalive = false, notify = true } = {}) {
@@ -243,6 +268,7 @@ async function resetState() {
         throw new Error(`Failed to reset remote state: ${response.status}`);
       }
       state = await response.json();
+      ensureStateDefaults(state);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       renderAll();
       showToast("演示数据已重置");
@@ -252,7 +278,7 @@ async function resetState() {
       console.warn(error);
     }
   }
-  state = structuredClone(seedState);
+  state = ensureStateDefaults(structuredClone(seedState));
   saveState();
   renderAll();
   showToast("演示数据已重置");
@@ -262,7 +288,7 @@ async function initApp() {
   try {
     state = await loadRemoteState();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    logEvent("sys", "系统启动成功：已成功连接到远程数据库，同步全局状态");
+    logEvent("sys", "系统启动成功：已成功连接 to 远程数据库，同步全局状态");
   } catch (error) {
     apiAvailable = false;
     console.warn(error);
@@ -270,6 +296,7 @@ async function initApp() {
     showToast("暂未连接数据库，使用本机演示数据");
     logEvent("sys", "数据库连接失败，已自动启用浏览器 LocalStorage 本机演示数据");
   }
+  ensureStateDefaults(state);
   renderAll();
   handleRouting();
   window.addEventListener("popstate", handleRouting);
@@ -688,6 +715,17 @@ function renderMineTabContent() {
     // 动态设置功能选项菜单内容
     $("#mineMenuVipStatus").textContent = user.vip ? "已开通 VIP 会员" : "开通会员解锁要求";
     $("#mineMenuMatchmaker").textContent = referralMm ? `${referralMm.name} (${referralMm.code})` : "待分配";
+
+    const realNameBadge = $("#miniMineRealNameStatus");
+    if (realNameBadge) {
+      if (user.realNameVerified) {
+        realNameBadge.textContent = "已实名";
+        realNameBadge.className = "status-badge green";
+      } else {
+        realNameBadge.textContent = "未认证";
+        realNameBadge.className = "status-badge orange";
+      }
+    }
   }
 }
 
@@ -1238,6 +1276,8 @@ function renderCustomers() {
           <td>${user.vip ? "VIP" : "普通"}</td>
           <td>${matchmaker?.name || "-"}</td>
           <td>${user.wechat}</td>
+          <td>${user.phone || "-"} / ${user.email || "-"}</td>
+          <td>${user.realNameVerified ? `<span class="status-badge green" style="font-size:11px;">已实名 (${user.realName})</span>` : '<span class="status-badge orange" style="font-size:11px;">未实名</span>'}</td>
         </tr>
       `;
     })
@@ -1469,6 +1509,22 @@ function adminAuthLogout() {
 function miniRegisterUser(event) {
   event.preventDefault();
   const form = event.currentTarget;
+  
+  const phone = form.elements.phone.value.trim();
+  const email = form.elements.email.value.trim();
+  if (!phone && !email) {
+    showToast("手机号或邮箱必须填写一项！");
+    return;
+  }
+  if (phone && !/^\d{11}$/.test(phone)) {
+    showToast("请输入合法的11位手机号");
+    return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast("请输入合法的邮箱地址");
+    return;
+  }
+
   const gender = form.elements.gender.value;
   
   const femalePhotos = [
@@ -1499,6 +1555,11 @@ function miniRegisterUser(event) {
     city: form.elements.city.value.trim(),
     job: form.elements.job.value.trim(),
     wechat: form.elements.wechat.value.trim(),
+    phone: phone || null,
+    email: email || null,
+    realNameVerified: false,
+    realName: null,
+    idCard: null,
     vip: false,
     referralMatchmakerId: null,
     bio: form.elements.bio.value.trim(),
@@ -1786,6 +1847,123 @@ function bindEvents() {
   // 内置管理员登录/退出事件绑定
   safeBind("#adminLoginForm", "submit", adminAuthLogin);
   safeBind("#adminLogoutBtn", "click", adminAuthLogout);
+
+  // 实名认证事件绑定
+  safeBind("#realNameVerificationMenuItem", "click", () => {
+    const user = currentUser();
+    if (!user) return;
+
+    const modal = $("#realNameModal");
+    if (modal) {
+      modal.style.display = "flex";
+      modal.classList.add("show");
+    }
+
+    if (user.realNameVerified) {
+      $("#realNameForm").style.display = "none";
+      $("#realNameInfoContainer").style.display = "flex";
+
+      const maskName = (name) => {
+        if (!name) return "-";
+        if (name.length <= 2) return name[0] + "*";
+        return name[0] + "*".repeat(name.length - 2) + name[name.length - 1];
+      };
+      const maskIdCard = (id) => {
+        if (!id) return "-";
+        return id.substring(0, 4) + "***********" + id.substring(15);
+      };
+      const maskPhone = (ph) => {
+        if (!ph) return "-";
+        return ph.substring(0, 3) + "****" + ph.substring(7);
+      };
+
+      $("#infoRealName").textContent = maskName(user.realName);
+      $("#infoIdCard").textContent = maskIdCard(user.idCard);
+      $("#infoPhone").textContent = maskPhone(user.phone);
+    } else {
+      $("#realNameForm").style.display = "block";
+      $("#realNameInfoContainer").style.display = "none";
+      $("#realNameInput").value = "";
+      $("#idCardInput").value = "";
+
+      if (!user.phone) {
+        $("#realNamePhoneLabel").style.display = "block";
+        $("#realNamePhoneInput").required = true;
+        $("#realNamePhoneInput").value = "";
+      } else {
+        $("#realNamePhoneLabel").style.display = "none";
+        $("#realNamePhoneInput").required = false;
+      }
+    }
+  });
+
+  safeBind("#closeRealNameModalBtn", "click", () => {
+    const modal = $("#realNameModal");
+    if (modal) {
+      modal.style.display = "none";
+      modal.classList.remove("show");
+    }
+  });
+
+  safeBind("#realNameModal", "click", (e) => {
+    if (e.target === e.currentTarget) {
+      e.currentTarget.style.display = "none";
+      e.currentTarget.classList.remove("show");
+    }
+  });
+
+  safeBind("#realNameForm", "submit", (event) => {
+    event.preventDefault();
+    const user = currentUser();
+    if (!user) return;
+
+    const realName = $("#realNameInput").value.trim();
+    const idCard = $("#idCardInput").value.trim();
+
+    if (!realName || !idCard) {
+      showToast("请填写真实姓名和身份证号");
+      return;
+    }
+
+    const idCardPattern = /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-3][0-9]))\d{3}[0-9Xx]$/;
+    if (!idCardPattern.test(idCard)) {
+      showToast("请输入合法的18位身份证号");
+      return;
+    }
+
+    let phone = user.phone;
+    if (!phone) {
+      const phoneInput = $("#realNamePhoneInput").value.trim();
+      if (!phoneInput) {
+        showToast("未绑定手机号，请补充输入手机号");
+        return;
+      }
+      if (!/^\d{11}$/.test(phoneInput)) {
+        showToast("请输入合法的11位手机号");
+        return;
+      }
+      phone = phoneInput;
+      user.phone = phone;
+    }
+
+    user.realName = realName;
+    user.idCard = idCard;
+    user.realNameVerified = true;
+
+    saveState();
+    renderAll();
+    showToast("实名认证成功！");
+
+    window.setTimeout(() => {
+      const modal = $("#realNameModal");
+      if (modal) {
+        modal.style.display = "none";
+        modal.classList.remove("show");
+      }
+    }, 1200);
+
+    logEvent("user", `客户 '${user.name}' 成功完成实名认证 (真实姓名: ${realName})`);
+  });
 }
 
 bindEvents();

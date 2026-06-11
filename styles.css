@@ -1399,6 +1399,11 @@ th {
   color: #64748b;
 }
 
+.status-badge.orange {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
 /* --- Multi-port role deployment style rules --- */
 body.role-mini .sidebar,
 body.role-matchmaker .sidebar,
