@@ -267,6 +267,23 @@ async function initApp() {
   }
   renderAll();
   applyRoleRouting();
+
+  // 开启多端自动轮询同步数据（每4秒）
+  window.setInterval(async () => {
+    if (apiAvailable) {
+      try {
+        const remoteState = await loadRemoteState();
+        if (JSON.stringify(remoteState) !== JSON.stringify(state)) {
+          state = remoteState;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          renderAll();
+          logEvent("sys", "自动同步：已拉取来自其他端的最新业务状态");
+        }
+      } catch (e) {
+        console.warn("轮询同步数据失败:", e);
+      }
+    }
+  }, 4000);
 }
 
 function applyRoleRouting() {
