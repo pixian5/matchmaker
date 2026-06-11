@@ -474,6 +474,19 @@ function renderMineTabContent() {
     badge.textContent = user.vip ? "VIP 会员" : "普通用户";
     badge.style.background = user.vip ? "#d9f7e8" : "#fff1c7";
     badge.style.color = user.vip ? "#166534" : "#7a4a08";
+
+    // 动态渲染客户数据指标面板
+    const userReqs = state.requests.filter(r => r.fromUserId === user.id);
+    const unlockedReqs = userReqs.filter(r => r.status === "已联系双方");
+    const referralMm = user.referralMatchmakerId ? getMatchmaker(user.referralMatchmakerId) : null;
+
+    $("#mineStatRequests").textContent = userReqs.length;
+    $("#mineStatVIP").textContent = user.vip ? "VIP" : "普通";
+    $("#mineStatUnlocked").textContent = unlockedReqs.length;
+
+    // 动态设置功能选项菜单内容
+    $("#mineMenuVipStatus").textContent = user.vip ? "已开通 VIP 会员" : "开通会员解锁要求";
+    $("#mineMenuMatchmaker").textContent = referralMm ? `${referralMm.name} (${referralMm.code})` : "待分配";
   }
 }
 

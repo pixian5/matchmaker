@@ -1318,4 +1318,84 @@ th {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* --- Mine Tab Dashboard & setting menu lists --- */
+.mine-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 0;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.stat-item strong {
+  font-size: 16px;
+  color: var(--teal-dark);
+}
+
+.stat-item span {
+  font-size: 10px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.mine-menu-list {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.menu-item:last-child {
+  border-bottom: 0;
+}
+
+.menu-item span:last-child {
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.status-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: bold;
+}
+
+.status-badge.green {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-badge.gray {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+
 

@@ -253,7 +253,7 @@
                   <!-- 已登录状态 -->
                   <div id="miniMineRegistered" style="display: none;">
                     <!-- 个人中心卡片 -->
-                    <div class="profile-card" style="border: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 16px;">
+                    <div class="profile-card" style="border: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 12px;">
                       <div id="miniMineAvatarBg" style="height: 120px; background-size: cover; background-position: center; border-radius: 8px 8px 0 0;"></div>
                       <div class="profile-body" style="padding: 16px;">
                         <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -261,6 +261,42 @@
                           <span class="vip-badge" id="miniMineVip">普通用户</span>
                         </div>
                         <div id="miniMineDetails" class="profile-meta" style="margin-top: 4px;">男 · 31 岁 · 上海</div>
+                      </div>
+                    </div>
+
+                    <!-- 数据看板行 -->
+                    <div class="mine-stats-grid">
+                      <div class="stat-item">
+                        <strong id="mineStatRequests">0</strong>
+                        <span>牵线申请</span>
+                      </div>
+                      <div class="stat-item" style="border-left: 1px solid var(--line); border-right: 1px solid var(--line);">
+                        <strong id="mineStatVIP">普通</strong>
+                        <span>会员身份</span>
+                      </div>
+                      <div class="stat-item">
+                        <strong id="mineStatUnlocked">0</strong>
+                        <span>已解锁微信</span>
+                      </div>
+                    </div>
+
+                    <!-- 功能选项菜单 -->
+                    <div class="mine-menu-list">
+                      <div class="menu-item">
+                        <span class="menu-label">👑 会员服务</span>
+                        <span id="mineMenuVipStatus">未开通 VIP</span>
+                      </div>
+                      <div class="menu-item">
+                        <span class="menu-label">🤝 专属红娘</span>
+                        <span id="mineMenuMatchmaker">待指派</span>
+                      </div>
+                      <div class="menu-item">
+                        <span class="menu-label">🛡️ 实名认证</span>
+                        <span class="status-badge green">已认证</span>
+                      </div>
+                      <div class="menu-item">
+                        <span class="menu-label">📞 专属客服</span>
+                        <span class="status-badge gray">hqlak47@gmail.com</span>
                       </div>
                     </div>
 
