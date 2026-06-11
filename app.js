@@ -266,7 +266,8 @@ async function initApp() {
     logEvent("sys", "数据库连接失败，已自动启用浏览器 LocalStorage 本机演示数据");
   }
   renderAll();
-  applyRoleRouting();
+  handleRouting();
+  window.addEventListener("popstate", handleRouting);
 
   // 开启多端自动轮询同步数据（每4秒）
   window.setInterval(async () => {
@@ -286,18 +287,157 @@ async function initApp() {
   }, 4000);
 }
 
-function applyRoleRouting() {
+function handleRouting() {
   const port = window.location.port;
+  let path = window.location.pathname;
+
+  // 基础视觉隔离控制
   if (port === "8096") {
     document.body.className = "role-mini";
-    switchView("mini");
   } else if (port === "8097") {
     document.body.className = "role-matchmaker";
-    switchView("matchmaker");
   } else if (port === "8098") {
     document.body.className = "role-admin";
-    switchView("admin");
+  } else {
+    document.body.className = "";
   }
+
+  // 路由跳转分发逻辑
+  if (port === "8096") {
+    switchView("mini");
+    const loggedIn = !!state.currentUserId;
+    if (!loggedIn) {
+      if (path !== "/my") {
+        navigate("/my", { replace: true });
+        return;
+      }
+    }
+    if (path === "/" || path === "/discover") {
+      switchMiniTab("discover");
+    } else if (path === "/profile") {
+      switchMiniTab("profile");
+    } else if (path === "/vip") {
+      switchMiniTab("vip");
+    } else if (path === "/requests") {
+      switchMiniTab("requests");
+    } else if (path === "/my") {
+      switchMiniTab("mine");
+    } else {
+      navigate(loggedIn ? "/discover" : "/my", { replace: true });
+    }
+  } else if (port === "8097") {
+    switchView("matchmaker");
+    const loggedIn = !!state.selectedMatchmakerId;
+    if (path === "/workbench") {
+      if (!loggedIn) {
+        navigate("/login", { replace: true });
+      } else {
+        renderMatchmakerDesk();
+      }
+    } else if (path === "/" || path === "/login") {
+      if (loggedIn) {
+        navigate("/workbench", { replace: true });
+      } else {
+        renderMatchmakerDesk();
+      }
+    } else {
+      navigate(loggedIn ? "/workbench" : "/login", { replace: true });
+    }
+  } else if (port === "8098") {
+    switchView("admin");
+    const loggedIn = !!state.adminLoggedIn;
+    if (path === "/console") {
+      if (!loggedIn) {
+        navigate("/login", { replace: true });
+      } else {
+        renderAdmin();
+      }
+    } else if (path === "/" || path === "/login") {
+      if (loggedIn) {
+        navigate("/console", { replace: true });
+      } else {
+        renderAdmin();
+      }
+    } else {
+      navigate(loggedIn ? "/console" : "/login", { replace: true });
+    }
+  } else {
+    // 8095 预览端路由解析
+    if (path === "/" || path === "") {
+      navigate("/mini/discover", { replace: true });
+      return;
+    }
+
+    if (path.startsWith("/mini")) {
+      switchView("mini");
+      const loggedIn = !!state.currentUserId;
+      const sub = path.substring(5);
+      if (!loggedIn) {
+        if (sub !== "/my") {
+          navigate("/mini/my", { replace: true });
+          return;
+        }
+      }
+      if (sub === "" || sub === "/" || sub === "/discover") {
+        switchMiniTab("discover");
+      } else if (sub === "/profile") {
+        switchMiniTab("profile");
+      } else if (sub === "/vip") {
+        switchMiniTab("vip");
+      } else if (sub === "/requests") {
+        switchMiniTab("requests");
+      } else if (sub === "/my") {
+        switchMiniTab("mine");
+      } else {
+        navigate(loggedIn ? "/mini/discover" : "/mini/my", { replace: true });
+      }
+    } else if (path.startsWith("/matchmaker")) {
+      switchView("matchmaker");
+      const loggedIn = !!state.selectedMatchmakerId;
+      const sub = path.substring(11);
+      if (sub === "/workbench") {
+        if (!loggedIn) {
+          navigate("/matchmaker/login", { replace: true });
+        } else {
+          renderMatchmakerDesk();
+        }
+      } else {
+        if (loggedIn) {
+          navigate("/matchmaker/workbench", { replace: true });
+        } else {
+          renderMatchmakerDesk();
+        }
+      }
+    } else if (path.startsWith("/admin")) {
+      switchView("admin");
+      const loggedIn = !!state.adminLoggedIn;
+      const sub = path.substring(6);
+      if (sub === "/console") {
+        if (!loggedIn) {
+          navigate("/admin/login", { replace: true });
+        } else {
+          renderAdmin();
+        }
+      } else {
+        if (loggedIn) {
+          navigate("/admin/console", { replace: true });
+        } else {
+          renderAdmin();
+        }
+      }
+    } else {
+      navigate("/mini/discover", { replace: true });
+    }
+  }
+}
+
+function navigate(path, { replace = false } = {}) {
+  if (replace) {
+    window.history.replaceState(null, "", path);
+  } else {
+    window.history.pushState(null, "", path);
+  }
+  handleRouting();
 }
 
 function uid(prefix) {
@@ -458,11 +598,7 @@ function renderMiniApp() {
       tab.setAttribute("aria-disabled", !isMine ? "true" : "false");
     });
     
-    // 如果当前活动的不是“我的”，强行切到“我的”
-    const currentTab = $(".tabs.compact-tabs button.active")?.dataset.miniTab;
-    if (currentTab !== "mine") {
-      switchMiniTab("mine");
-    }
+    // 路由层面会自动守卫非已登录用户重定向到 /my 选项卡，此处只需进行按钮禁用渲染
   } else {
     tabs.forEach((tab) => {
       tab.classList.remove("disabled");
@@ -587,7 +723,8 @@ function createRequest(targetUserId) {
   const target = state.users.find((item) => item.id === targetUserId);
   if (!user.vip) {
     showToast("请先扫码开通会员，再提交牵线请求");
-    switchMiniTab("vip");
+    const is8096 = window.location.port === "8096";
+    navigate(is8096 ? "/vip" : "/mini/vip");
     return;
   }
 
@@ -1036,7 +1173,8 @@ function mmAuthLogin() {
 
   state.selectedMatchmakerId = selectedId;
   saveState();
-  renderAll();
+  const is8097 = window.location.port === "8097";
+  navigate(is8097 ? "/workbench" : "/matchmaker/workbench");
   logEvent("match", `红娘 '${m.name}' 成功登录红娘工作台`);
   showToast(`已登录为红娘：${m.name}`);
 }
@@ -1068,7 +1206,8 @@ function mmAuthRegister(event) {
 
   form.reset();
   saveState();
-  renderAll();
+  const is8097 = window.location.port === "8097";
+  navigate(is8097 ? "/workbench" : "/matchmaker/workbench");
   logEvent("match", `新红娘注册并登录成功：${name} [${code}]`);
   showToast(`红娘 ${name} 注册并登录成功`);
 }
@@ -1079,7 +1218,8 @@ function mmAuthLogout() {
   
   state.selectedMatchmakerId = null;
   saveState();
-  renderAll();
+  const is8097 = window.location.port === "8097";
+  navigate(is8097 ? "/login" : "/matchmaker/login");
   logEvent("match", `红娘 '${name}' 已退出工作台登录`);
   showToast("红娘已安全退出登录");
 }
@@ -1091,7 +1231,8 @@ function adminAuthLogin(event) {
   if (password.toLowerCase() === "admin") {
     state.adminLoggedIn = true;
     saveState();
-    renderAll();
+    const is8098 = window.location.port === "8098";
+    navigate(is8098 ? "/console" : "/admin/console");
     logEvent("sys", "管理员成功安全登录管理控制台");
     showToast("管理员登录成功");
   } else {
@@ -1102,7 +1243,8 @@ function adminAuthLogin(event) {
 function adminAuthLogout() {
   state.adminLoggedIn = false;
   saveState();
-  renderAll();
+  const is8098 = window.location.port === "8098";
+  navigate(is8098 ? "/login" : "/admin/login");
   logEvent("sys", "管理员已退出管理控制台");
   showToast("管理员已退出登录");
 }
@@ -1156,7 +1298,8 @@ function miniRegisterUser(event) {
   
   form.reset();
   saveState();
-  switchMiniTab("discover");
+  const is8096 = window.location.port === "8096";
+  navigate(is8096 ? "/discover" : "/mini/discover");
   renderAll();
   showToast(`注册成功！已为您登录为 ${name}`);
 
@@ -1177,7 +1320,8 @@ function miniSwitchUser() {
 
   state.currentUserId = selectedId;
   saveState();
-  switchMiniTab("discover");
+  const is8096 = window.location.port === "8096";
+  navigate(is8096 ? "/discover" : "/mini/discover");
   renderAll();
   showToast(`已成功登录：${user.name}`);
 
@@ -1199,12 +1343,16 @@ function miniLogoutUser() {
   renderAll();
   showToast("已退出登录，当前为游客模式");
 
+  const is8096 = window.location.port === "8096";
+  navigate(is8096 ? "/my" : "/mini/my");
+
   logEvent("user", `客户 '${oldName}' 已退出登录`);
 }
 
 // Mini Program Redirect guest to mine tab (for login/register)
 function miniToRegister() {
-  switchMiniTab("mine");
+  const is8096 = window.location.port === "8096";
+  navigate(is8096 ? "/my" : "/mini/my");
 }
 
 function quickAddMember(gender) {
@@ -1291,7 +1439,18 @@ function quickAddMember(gender) {
 
 function bindEvents() {
   $$(".nav-item").forEach((button) => {
-    button.addEventListener("click", () => switchView(button.dataset.view));
+    button.addEventListener("click", () => {
+      const view = button.dataset.view;
+      if (view === "mini") {
+        navigate("/mini/discover");
+      } else if (view === "matchmaker") {
+        const loggedIn = !!state.selectedMatchmakerId;
+        navigate(loggedIn ? "/matchmaker/workbench" : "/matchmaker/login");
+      } else if (view === "admin") {
+        const loggedIn = !!state.adminLoggedIn;
+        navigate(loggedIn ? "/admin/console" : "/admin/login");
+      }
+    });
   });
   $$("[data-mini-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1303,7 +1462,19 @@ function bindEvents() {
         showToast("请先在“我的”页面登录或注册客户账号");
         return;
       }
-      switchMiniTab(button.dataset.miniTab);
+      
+      const tab = button.dataset.miniTab;
+      const is8096 = window.location.port === "8096";
+      const prefix = is8096 ? "" : "/mini";
+      const tabPathMap = {
+        discover: "/discover",
+        profile: "/profile",
+        vip: "/vip",
+        requests: "/requests",
+        mine: "/my"
+      };
+      const path = prefix + (tabPathMap[tab] || "/discover");
+      navigate(path);
     });
   });
   ["#genderFilter", "#cityFilter", "#ageFilter"].forEach((selector) => {
