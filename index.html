@@ -156,17 +156,28 @@
                   
                   <!-- 正常内容 -->
                   <div id="vipContent">
-                    <div class="pay-card">
-                      <div>
+                    <div class="pay-card" style="text-align: center;">
+                      <div style="text-align: left;">
                         <span class="eyebrow">扫码付费</span>
                         <h3>成为会员后解锁择偶要求</h3>
                         <p>选择绑定专属红娘，模拟扫码支付 399 元，系统会记录推广红娘并生成分成。</p>
                       </div>
-                      <div class="qr-box" aria-label="模拟付款二维码">
+                      <div class="qr-box" aria-label="模拟付款二维码" style="margin: 10px auto;">
                         <span></span><span></span><span></span><span></span>
                       </div>
+
+                      <!-- 兑换码兑换区域 (移到二维码下方) -->
+                      <div style="margin: 15px 0; padding: 15px 0; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); text-align: left; width: 100%;">
+                        <label class="wide">
+                          <span style="font-weight: 800; color: #0f766e;">或者：使用会员兑换码兑换</span>
+                          <div style="display: flex; gap: 8px; margin-top: 6px;">
+                            <input id="vipPromoCodeInput" placeholder="如 VIP666" style="text-transform: uppercase; background: rgba(255, 255, 255, 0.9); flex: 1; min-height: 38px;" />
+                            <button class="primary-button" id="redeemVipBtn" type="button" style="background: var(--teal); border: none; min-width: 80px; min-height: 38px; padding: 0 14px;">立即兑换</button>
+                          </div>
+                        </label>
+                      </div>
                       
-                      <div class="form-grid" style="margin-top: 15px; margin-bottom: 15px; text-align: left;">
+                      <div class="form-grid" style="margin-bottom: 15px; text-align: left;">
                         <label class="wide">
                           <span>搜索专属红娘（支持拼音或关键字）</span>
                           <input id="searchMatchmakerInput" type="text" placeholder="输入红娘姓名、推荐码或机构搜索..." style="background: rgba(255, 255, 255, 0.9);" />
@@ -181,25 +192,7 @@
                         <input type="hidden" id="referralCodeInput" />
                       </div>
                       
-                      <button class="primary-button" id="becomeVipBtn" type="button">模拟支付并开通</button>
-                    </div>
-
-                    <!-- 兑换码兑换区域 -->
-                    <div class="pay-card" style="margin-top: 20px; border-color: rgba(9, 132, 227, 0.15); background: linear-gradient(135deg, rgba(9, 132, 227, 0.02) 0%, rgba(116, 185, 255, 0.05) 100%);">
-                      <div>
-                        <span class="eyebrow" style="background: rgba(9, 132, 227, 0.1); color: #0984e3;">兑换码兑换</span>
-                        <h3>使用会员兑换码</h3>
-                        <p>如果您拥有系统发放的专属会员兑换码，输入并点击兑换即可瞬间开通 VIP 会员。</p>
-                      </div>
-                      
-                      <div class="form-grid" style="margin-top: 15px; margin-bottom: 15px; text-align: left;">
-                        <label class="wide">
-                          <span>会员兑换码</span>
-                          <input id="vipPromoCodeInput" placeholder="如 VIP666" style="text-transform: uppercase; background: rgba(255, 255, 255, 0.9);" />
-                        </label>
-                      </div>
-                      
-                      <button class="primary-button" id="redeemVipBtn" type="button" style="background: linear-gradient(135deg, #0984e3 0%, #74b9ff 100%); border: none;">立即兑换开通</button>
+                      <button class="primary-button" id="becomeVipBtn" type="button" style="width: 100%;">模拟支付并开通</button>
                     </div>
                   </div>
                 </section>
