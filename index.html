@@ -179,17 +179,15 @@
                       
                       <div class="form-grid" style="margin-bottom: 15px; text-align: left;">
                         <label class="wide">
-                          <span>搜索专属红娘（支持拼音或关键字）</span>
-                          <input id="searchMatchmakerInput" type="text" placeholder="输入红娘姓名、推荐码或机构搜索..." style="background: rgba(255, 255, 255, 0.9);" />
+                          <span>选择专属红娘 (可输入姓名、推荐码或机构快速筛选)</span>
+                          <div class="searchable-select">
+                            <input id="referralMatchmakerSelect" placeholder="-- 请选择专属红娘 --" autocomplete="off" style="background: white url('data:image/svg+xml;charset=utf-8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;%236d7785&quot; stroke-width=&quot;2&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;><polyline points=&quot;6 9 12 15 18 9&quot;/></svg>') no-repeat right 12px center/16px; cursor: pointer;" />
+                            <input type="hidden" id="referralCodeInput" />
+                            <div class="select-dropdown" id="matchmakerDropdownPanel" style="display: none;">
+                              <ul class="dropdown-options" id="matchmakerOptionsList"></ul>
+                            </div>
+                          </div>
                         </label>
-                        <label class="wide">
-                          <span>选择专属红娘</span>
-                          <select id="referralMatchmakerSelect" style="background: rgba(255, 255, 255, 0.9); height: 40px; border-radius: 6px; border: 1px solid var(--border-color); padding: 0 10px;">
-                            <option value="">-- 请选择专属红娘 --</option>
-                          </select>
-                        </label>
-                        <!-- 隐藏的推荐码输入框，用于后台业务兼容 -->
-                        <input type="hidden" id="referralCodeInput" />
                       </div>
                       
                       <button class="primary-button" id="becomeVipBtn" type="button" style="width: 100%;">模拟支付并开通</button>

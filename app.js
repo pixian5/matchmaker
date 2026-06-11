@@ -634,6 +634,21 @@ function renderMiniApp() {
   if (!$("#vipState")) return;
   const user = currentUser();
   renderVipMatchmakers();
+
+  if (user) {
+    const referralInput = $("#referralCodeInput");
+    const selectTrigger = $("#referralMatchmakerSelect");
+    if (referralInput && selectTrigger) {
+      if (user.referralMatchmakerId && !referralInput.value) {
+        const m = getMatchmaker(user.referralMatchmakerId);
+        if (m) {
+          referralInput.value = m.code;
+          const agency = getAgency(m.agencyId);
+          selectTrigger.value = `${m.name} [${m.code}] (${agency?.name || "未知机构"})`;
+        }
+      }
+    }
+  }
   
   // VIP Badge
   $("#vipState").textContent = user ? (user.vip ? "VIP 会员" : "普通用户") : "游客访客";
@@ -904,8 +919,8 @@ function becomeVip() {
 }
 
 function renderVipMatchmakers(filterKeyword = "") {
-  const select = $("#referralMatchmakerSelect");
-  if (!select) return;
+  const listContainer = $("#matchmakerOptionsList");
+  if (!listContainer) return;
 
   const keyword = filterKeyword.trim().toLowerCase();
   const filtered = state.matchmakers.filter((m) => {
@@ -914,20 +929,26 @@ function renderVipMatchmakers(filterKeyword = "") {
     return text.includes(keyword);
   });
 
-  const currentSelectValue = select.value;
+  const hiddenInput = $("#referralCodeInput");
+  const currentVal = hiddenInput ? hiddenInput.value : "";
 
-  select.innerHTML =
-    `<option value="">-- 请选择专属红娘 --</option>` +
-    filtered
+  let html = "";
+  if (filtered.length === 0) {
+    html = `<li class="no-results">没有找到匹配的红娘</li>`;
+  } else {
+    html = `<li data-value="" class="${currentVal === "" ? "selected" : ""}">-- 请选择专属红娘 --</li>`;
+    html += filtered
       .map((m) => {
         const agency = getAgency(m.agencyId);
-        return `<option value="${m.code}">${m.name} [${m.code}] (${agency?.name || "未知机构"})</option>`;
+        const labelText = `${m.name} [${m.code}] (${agency?.name || "未知机构"})`;
+        const isSelected = m.code === currentVal;
+        return `<li data-value="${m.code}" data-label="${labelText}" class="${isSelected ? "selected" : ""}">
+          ${labelText}
+        </li>`;
       })
       .join("");
-
-  if (filtered.some((m) => m.code === currentSelectValue)) {
-    select.value = currentSelectValue;
   }
+  listContainer.innerHTML = html;
 }
 
 function redeemVip() {
@@ -1778,14 +1799,59 @@ function bindEvents() {
   safeBind("#becomeVipBtn", "click", becomeVip);
 
   // VIP 会员页面专属红娘筛选、选择与兑换码绑定
-  safeBind("#searchMatchmakerInput", "input", (e) => {
-    renderVipMatchmakers(e.target.value);
-  });
-  
-  safeBind("#referralMatchmakerSelect", "change", (e) => {
-    const referralInput = $("#referralCodeInput");
-    if (referralInput) referralInput.value = e.target.value;
-  });
+  const selectTrigger = $("#referralMatchmakerSelect");
+  const dropdownPanel = $("#matchmakerDropdownPanel");
+  const optionsList = $("#matchmakerOptionsList");
+  const referralInput = $("#referralCodeInput");
+
+  if (selectTrigger && dropdownPanel && optionsList) {
+    selectTrigger.addEventListener("focus", () => {
+      renderVipMatchmakers(selectTrigger.value);
+      dropdownPanel.style.display = "block";
+    });
+    
+    selectTrigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dropdownPanel.style.display = "block";
+    });
+
+    selectTrigger.addEventListener("input", (e) => {
+      renderVipMatchmakers(e.target.value);
+      dropdownPanel.style.display = "block";
+      if (referralInput) referralInput.value = "";
+    });
+
+    optionsList.addEventListener("click", (e) => {
+      const li = e.target.closest("li");
+      if (!li || li.classList.contains("no-results")) return;
+
+      const val = li.getAttribute("data-value");
+      const label = li.getAttribute("data-label") || "";
+
+      if (referralInput) referralInput.value = val;
+      selectTrigger.value = val ? label : "";
+      renderVipMatchmakers(selectTrigger.value);
+      dropdownPanel.style.display = "none";
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".searchable-select")) {
+        dropdownPanel.style.display = "none";
+        const selectedCode = referralInput ? referralInput.value : "";
+        if (selectedCode) {
+          const m = state.matchmakers.find(mm => mm.code === selectedCode);
+          if (m) {
+            const agency = getAgency(m.agencyId);
+            selectTrigger.value = `${m.name} [${m.code}] (${agency?.name || "未知机构"})`;
+          } else {
+            selectTrigger.value = "";
+          }
+        } else {
+          selectTrigger.value = "";
+        }
+      }
+    });
+  }
   
   safeBind("#redeemVipBtn", "click", redeemVip);
   
