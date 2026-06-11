@@ -41,11 +41,12 @@
               <div class="vip-badge" id="vipState">普通用户</div>
             </header>
 
-            <div class="tabs compact-tabs" role="tablist" aria-label="小程序功能">
+            <div class="tabs compact-tabs" role="tablist" aria-label="小程序功能" style="grid-template-columns: repeat(5, 1fr);">
               <button class="tab active" data-mini-tab="discover">筛选</button>
               <button class="tab" data-mini-tab="profile">资料</button>
               <button class="tab" data-mini-tab="vip">会员</button>
               <button class="tab" data-mini-tab="requests">牵线</button>
+              <button class="tab" data-mini-tab="mine">我的</button>
             </div>
 
             <section class="mini-tab active" id="discoverTab">
@@ -88,73 +89,18 @@
             </section>
 
             <section class="mini-tab" id="profileTab">
-              <!-- 未登录/未注册状态 -->
-              <div id="miniProfileUnregistered" style="display: none;">
-                <div class="pay-card" style="padding: 0 0 16px 0; margin-bottom: 16px; border-bottom: 1px solid var(--line);">
-                  <span class="eyebrow" style="color: var(--coral);">访客身份</span>
-                  <h3>已有客户账号？</h3>
-                  <div class="stack-form" style="margin-top: 8px; grid-template-columns: 1fr auto;">
-                    <select id="miniSwitchUserSelect" aria-label="选择已有账号" style="flex: 1; min-width: 0;"></select>
-                    <button class="primary-button" id="miniSwitchUserBtn" type="button" style="min-height: 40px;">登录</button>
-                  </div>
+              <!-- 未登录锁 -->
+              <div class="mini-lock-overlay" id="profileLock" style="display: none;">
+                <div class="lock-content">
+                  <div class="lock-icon">🔒</div>
+                  <h3>完善个人资料</h3>
+                  <p>您当前以游客身份访问，请先注册或登录个人账号</p>
+                  <button class="primary-button mini-to-register-btn" type="button">去登录 / 注册</button>
                 </div>
-
-                <div class="section-title">
-                  <h3>注册新客户账号</h3>
-                </div>
-                <form class="form-grid" id="miniRegisterForm">
-                  <label>
-                    <span>姓名</span>
-                    <input name="name" required placeholder="如：林安" />
-                  </label>
-                  <label>
-                    <span>性别</span>
-                    <select name="gender" required>
-                      <option value="女">女</option>
-                      <option value="男">男</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>年龄</span>
-                    <input name="age" type="number" min="18" max="70" required placeholder="如：28" />
-                  </label>
-                  <label>
-                    <span>城市</span>
-                    <input name="city" required placeholder="如：上海" />
-                  </label>
-                  <label>
-                    <span>职业</span>
-                    <input name="job" required placeholder="如：媒体人" />
-                  </label>
-                  <label>
-                    <span>微信</span>
-                    <input name="wechat" required placeholder="个人微信号" />
-                  </label>
-                  <label class="wide">
-                    <span>自我介绍</span>
-                    <textarea name="bio" rows="2" required placeholder="一两句话介绍自己，如兴趣爱好等"></textarea>
-                  </label>
-                  <label class="wide">
-                    <span>择偶要求</span>
-                    <textarea name="requirements" rows="2" required placeholder="期望对方的年龄、性格、城市等"></textarea>
-                  </label>
-                  <button class="primary-button wide" type="submit">立即注册并开始交友</button>
-                </form>
               </div>
 
-              <!-- 已登录状态 -->
-              <div id="miniProfileRegistered" style="display: none;">
-                <div class="profile-account-bar" style="margin-bottom: 16px; padding: 10px 12px; background: #f0f4f8; border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <div id="miniCurrentAvatar" style="width: 32px; height: 32px; border-radius: 50%; background-size: cover; background-position: center; border: 1px solid var(--line);"></div>
-                    <div>
-                      <strong id="miniCurrentName" style="font-size: 14px;">林安</strong>
-                      <span class="vip-badge" id="miniCurrentVip" style="padding: 2px 6px; font-size: 10px; margin-left: 4px;">普通用户</span>
-                    </div>
-                  </div>
-                  <button class="secondary-button" id="miniLogoutBtn" type="button" style="min-height: 28px; height: 28px; font-size: 11px; padding: 0 10px; font-weight: 700;">退出登录</button>
-                </div>
-
+              <!-- 正常内容 -->
+              <div id="profileContent">
                 <form class="form-grid" id="profileForm">
                   <label>
                     <span>姓名</span>
@@ -203,7 +149,7 @@
                   <div class="lock-icon">🔒</div>
                   <h3>开通会员服务</h3>
                   <p>您当前以游客身份访问，请先注册或登录个人账号</p>
-                  <button class="primary-button mini-to-register-btn" type="button">去注册 / 登录</button>
+                  <button class="primary-button mini-to-register-btn" type="button">去登录 / 注册</button>
                 </div>
               </div>
               
@@ -234,7 +180,7 @@
                   <div class="lock-icon">🔒</div>
                   <h3>查看牵线请求</h3>
                   <p>您当前以游客身份访问，请先注册或登录个人账号</p>
-                  <button class="primary-button mini-to-register-btn" type="button">去注册 / 登录</button>
+                  <button class="primary-button mini-to-register-btn" type="button">去登录 / 注册</button>
                 </div>
               </div>
               
@@ -245,6 +191,82 @@
                   <span id="requestCount">0 条</span>
                 </div>
                 <div id="myRequests" class="request-list"></div>
+              </div>
+            </section>
+
+            <section class="mini-tab" id="mineTab">
+              <!-- 未登录状态 -->
+              <div id="miniMineUnregistered" style="display: none;">
+                <div class="pay-card" style="padding: 0 0 16px 0; margin-bottom: 16px; border-bottom: 1px solid var(--line);">
+                  <span class="eyebrow" style="color: var(--coral);">已有客户账号</span>
+                  <h3>一键切换登录</h3>
+                  <div class="stack-form" style="margin-top: 8px; grid-template-columns: 1fr auto;">
+                    <select id="miniSwitchUserSelect" aria-label="选择已有账号" style="flex: 1; min-width: 0;"></select>
+                    <button class="primary-button" id="miniSwitchUserBtn" type="button" style="min-height: 40px;">登录</button>
+                  </div>
+                </div>
+
+                <div class="section-title">
+                  <h3>注册新客户账号</h3>
+                </div>
+                <form class="form-grid" id="miniRegisterForm">
+                  <label>
+                    <span>姓名</span>
+                    <input name="name" required placeholder="如：小明" />
+                  </label>
+                  <label>
+                    <span>性别</span>
+                    <select name="gender" required>
+                      <option value="女">女</option>
+                      <option value="男">男</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>年龄</span>
+                    <input name="age" type="number" min="18" max="70" required placeholder="如：28" />
+                  </label>
+                  <label>
+                    <span>城市</span>
+                    <input name="city" required placeholder="如：上海" />
+                  </label>
+                  <label>
+                    <span>职业</span>
+                    <input name="job" required placeholder="如：媒体人" />
+                  </label>
+                  <label>
+                    <span>微信</span>
+                    <input name="wechat" required placeholder="请填写微信号" />
+                  </label>
+                  <label class="wide">
+                    <span>个人介绍</span>
+                    <textarea name="bio" rows="2" required placeholder="介绍自己的兴趣爱好等"></textarea>
+                  </label>
+                  <label class="wide">
+                    <span>择偶要求</span>
+                    <textarea name="requirements" rows="2" required placeholder="对另一半的要求"></textarea>
+                  </label>
+                  <button class="primary-button wide" type="submit">立即注册并登录</button>
+                </form>
+              </div>
+
+              <!-- 已登录状态 -->
+              <div id="miniMineRegistered" style="display: none;">
+                <!-- 个人中心卡片 -->
+                <div class="profile-card" style="border: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 16px;">
+                  <div id="miniMineAvatarBg" style="height: 120px; background-size: cover; background-position: center; border-radius: 8px 8px 0 0;"></div>
+                  <div class="profile-body" style="padding: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                      <strong id="miniMineName" style="font-size: 20px;">林安</strong>
+                      <span class="vip-badge" id="miniMineVip">普通用户</span>
+                    </div>
+                    <div id="miniMineDetails" class="profile-meta" style="margin-top: 4px;">男 · 31 岁 · 上海</div>
+                  </div>
+                </div>
+
+                <!-- 账号操作菜单 -->
+                <div class="pay-card" style="padding: 0;">
+                  <button class="ghost-button" id="miniLogoutBtn" type="button" style="color: var(--coral); border-color: rgba(220, 107, 92, 0.3); background: rgba(220, 107, 92, 0.05); width: 100%;">退出当前登录</button>
+                </div>
               </div>
             </section>
           </div>

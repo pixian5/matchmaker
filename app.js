@@ -327,27 +327,60 @@ function renderMiniApp() {
   $("#vipState").style.background = user ? (user.vip ? "#d9f7e8" : "#fff1c7") : "#eef2f5";
   $("#vipState").style.color = user ? (user.vip ? "#166534" : "#7a4a08") : "#6d7785";
   
-  // VIP Tab lock
+  // Tab lock overlays control
   if (!user) {
+    $("#discoverLock").style.display = "flex";
+    $("#discoverContent").style.display = "none";
+    
+    $("#profileLock").style.display = "flex";
+    $("#profileContent").style.display = "none";
+    
     $("#vipLock").style.display = "flex";
     $("#vipContent").style.display = "none";
+    
+    $("#requestsLock").style.display = "flex";
+    $("#requestsContent").style.display = "none";
   } else {
+    $("#discoverLock").style.display = "none";
+    $("#discoverContent").style.display = "block";
+    
+    $("#profileLock").style.display = "none";
+    $("#profileContent").style.display = "block";
+    
     $("#vipLock").style.display = "none";
     $("#vipContent").style.display = "block";
+    
+    $("#requestsLock").style.display = "none";
+    $("#requestsContent").style.display = "block";
+    
+    // Fill the profile form fields
+    renderProfileForm();
   }
 
-  renderProfileTabContent();
+  renderMineTabContent();
   renderProfiles();
   renderRequests();
 }
 
-function renderProfileTabContent() {
+function renderProfileForm() {
+  const form = $("#profileForm");
+  const user = currentUser();
+  if (user) {
+    Object.entries(user).forEach(([key, value]) => {
+      if (form.elements[key]) {
+        form.elements[key].value = value;
+      }
+    });
+  }
+}
+
+function renderMineTabContent() {
   const user = currentUser();
   if (!user) {
-    $("#miniProfileUnregistered").style.display = "block";
-    $("#miniProfileRegistered").style.display = "none";
+    $("#miniMineUnregistered").style.display = "block";
+    $("#miniMineRegistered").style.display = "none";
     
-    // Render dropdown for switching accounts inside mini app
+    // Render dropdown list for login inside the mine tab
     $("#miniSwitchUserSelect").innerHTML = state.users
       .map(
         (u) =>
@@ -355,20 +388,14 @@ function renderProfileTabContent() {
       )
       .join("");
   } else {
-    $("#miniProfileUnregistered").style.display = "none";
-    $("#miniProfileRegistered").style.display = "block";
+    $("#miniMineUnregistered").style.display = "none";
+    $("#miniMineRegistered").style.display = "block";
     
-    const form = $("#profileForm");
-    Object.entries(user).forEach(([key, value]) => {
-      if (form.elements[key]) {
-        form.elements[key].value = value;
-      }
-    });
+    $("#miniMineAvatarBg").style.backgroundImage = `url('${user.photo}')`;
+    $("#miniMineName").textContent = user.name;
+    $("#miniMineDetails").textContent = `${user.gender} · ${user.age} 岁 · ${user.city}`;
     
-    $("#miniCurrentAvatar").style.backgroundImage = `url('${user.photo}')`;
-    $("#miniCurrentName").textContent = user.name;
-    
-    const badge = $("#miniCurrentVip");
+    const badge = $("#miniMineVip");
     badge.textContent = user.vip ? "VIP 会员" : "普通用户";
     badge.style.background = user.vip ? "#d9f7e8" : "#fff1c7";
     badge.style.color = user.vip ? "#166534" : "#7a4a08";
@@ -870,6 +897,7 @@ function switchMatchmaker() {
 // --- Mini Program Native Account Functions ---
 
 // Mini Program Client Register User
+// Mini Program Client Register User
 function miniRegisterUser(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -915,10 +943,35 @@ function miniRegisterUser(event) {
   
   form.reset();
   saveState();
-  closeAccountModal();
-  switchView("mini");
+  switchMiniTab("discover");
   renderAll();
-  showToast(`客户 ${name} 注册成功并已登录`);
+  showToast(`注册成功！已为您登录为 ${name}`);
+}
+
+// Mini Program Switch Existing User
+function miniSwitchUser() {
+  const selectedId = $("#miniSwitchUserSelect").value;
+  const user = state.users.find((u) => u.id === selectedId);
+  if (!user) return;
+
+  state.currentUserId = selectedId;
+  saveState();
+  switchMiniTab("discover");
+  renderAll();
+  showToast(`已成功登录：${user.name}`);
+}
+
+// Mini Program Logout User
+function miniLogoutUser() {
+  state.currentUserId = null;
+  saveState();
+  renderAll();
+  showToast("已退出登录，当前为游客模式");
+}
+
+// Mini Program Redirect guest to mine tab (for login/register)
+function miniToRegister() {
+  switchMiniTab("mine");
 }
 
 function bindEvents() {
