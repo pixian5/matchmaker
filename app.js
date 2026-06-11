@@ -1823,6 +1823,8 @@ function bindEvents() {
     });
 
     optionsList.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const li = e.target.closest("li");
       if (!li || li.classList.contains("no-results")) return;
 
