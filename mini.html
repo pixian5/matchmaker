@@ -156,8 +156,8 @@
                       </div>
                       
                       <div class="form-grid" style="margin-bottom: 15px; text-align: left;">
-                        <label class="wide">
-                          <span>选择专属红娘 (可输入姓名、推荐码或机构快速筛选)</span>
+                        <div class="wide" style="display: grid; gap: 6px;">
+                          <label for="referralMatchmakerSelect" style="color: var(--muted); font-size: 12px; font-weight: 700;">选择专属红娘 (可输入姓名、推荐码或机构快速筛选)</label>
                           <div class="searchable-select">
                             <input id="referralMatchmakerSelect" placeholder="-- 请选择专属红娘 --" autocomplete="off" style="background: white url('data:image/svg+xml;charset=utf-8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 24 24&quot; fill=&quot;none&quot; stroke=&quot;%236d7785&quot; stroke-width=&quot;2&quot; stroke-linecap=&quot;round&quot; stroke-linejoin=&quot;round&quot;><polyline points=&quot;6 9 12 15 18 9&quot;/></svg>') no-repeat right 12px center/16px; cursor: pointer;" />
                             <input type="hidden" id="referralCodeInput" />
@@ -165,7 +165,7 @@
                               <ul class="dropdown-options" id="matchmakerOptionsList"></ul>
                             </div>
                           </div>
-                        </label>
+                        </div>
                       </div>
                       
                       <button class="primary-button" id="becomeVipBtn" type="button" style="width: 100%;">模拟支付并开通</button>
