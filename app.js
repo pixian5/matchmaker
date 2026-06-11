@@ -256,11 +256,13 @@ async function initApp() {
   try {
     state = await loadRemoteState();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    logEvent("sys", "系统启动成功：已成功连接到远程数据库，同步全局状态");
   } catch (error) {
     apiAvailable = false;
     console.warn(error);
     state = loadState();
     showToast("暂未连接数据库，使用本机演示数据");
+    logEvent("sys", "数据库连接失败，已自动启用浏览器 LocalStorage 本机演示数据");
   }
   renderAll();
 }
@@ -286,6 +288,86 @@ function showToast(message) {
   toast.textContent = message;
   toast.classList.add("show");
   window.setTimeout(() => toast.classList.remove("show"), 2200);
+}
+
+function logEvent(module, message) {
+  const container = $("#consoleLogs");
+  if (!container) return;
+
+  const timeStr = new Date().toTimeString().slice(0, 8);
+  const row = document.createElement("div");
+  row.className = `log-row ${module}`;
+  
+  const tags = {
+    sys: "系统",
+    user: "客户",
+    match: "红娘",
+    deal: "分成"
+  };
+  const tagStr = tags[module] || "通知";
+
+  row.innerHTML = `
+    <span class="log-time">[${timeStr}]</span>
+    <span class="log-tag">[${tagStr}]</span>
+    <span class="log-msg">${message}</span>
+  `;
+
+  container.appendChild(row);
+  container.scrollTop = container.scrollHeight;
+
+  while (container.children.length > 80) {
+    container.removeChild(container.firstChild);
+  }
+}
+
+function showPushNotification(title, fields, type = "info") {
+  const container = $("#pushNotificationsList");
+  if (!container) return;
+
+  const emptyTip = container.querySelector(".push-empty");
+  if (emptyTip) {
+    emptyTip.remove();
+  }
+
+  const timeStr = new Date().toTimeString().slice(0, 5);
+  const card = document.createElement("article");
+  card.className = "wechat-push-card";
+
+  const rowsHtml = Object.entries(fields)
+    .map(
+      ([label, val]) => `
+      <div class="wechat-row">
+        <span class="wechat-label">${label}</span>
+        <strong class="wechat-value">${val}</strong>
+      </div>
+    `
+    )
+    .join("");
+
+  card.innerHTML = `
+    <div class="wechat-header">
+      <div class="wechat-brand">
+        <div class="wechat-icon">微</div>
+        <span>缘定传媒人微信公众号</span>
+      </div>
+      <span class="wechat-time">${timeStr}</span>
+    </div>
+    <div class="wechat-content">
+      <div class="wechat-title" style="color:#07c160;">${title}</div>
+      ${rowsHtml}
+    </div>
+    <div class="wechat-footer">
+      <span>进入小程序查看详情</span>
+      <span>&gt;</span>
+    </div>
+  `;
+
+  container.insertBefore(card, container.firstChild);
+
+  const cards = container.querySelectorAll(".wechat-push-card");
+  if (cards.length > 5) {
+    cards[cards.length - 1].remove();
+  }
 }
 
 function switchView(view) {
@@ -488,6 +570,15 @@ function createRequest(targetUserId) {
   saveState();
   renderAll();
   showToast(`已通知红娘为你和${target.name}牵线`);
+
+  const matchmaker = getMatchmaker(matchmakerId);
+  logEvent("user", `客户 '${user.name}' 申请认识嘉宾 '${target.name}'，已指派红娘 '${matchmaker?.name || "未知"}'`);
+  showPushNotification("【新牵线意向提醒】", {
+    "专属红娘": matchmaker?.name || "未分配",
+    "发起申请": `${user.name} (${user.gender}·${user.age}岁·${user.city})`,
+    "牵线嘉宾": `${target.name} (${target.gender}·${target.age}岁·${target.city})`,
+    "微信状态": "等待红娘线下双向确认，即可互相公开微信"
+  });
 }
 
 function renderRequests() {
@@ -543,6 +634,27 @@ function becomeVip() {
   saveState();
   renderAll();
   showToast(`已开通 VIP，推广红娘为${matchmaker.name}`);
+
+  const promoComm = (VIP_PRICE * (state.splits.promo / 100)).toFixed(2);
+  const matchComm = (VIP_PRICE * (state.splits.matchmaker / 100)).toFixed(2);
+  const platformComm = (VIP_PRICE * (state.splits.platform / 100)).toFixed(2);
+
+  logEvent("deal", `客户 '${user.name}' 开通 VIP 成功 (金额: ¥${VIP_PRICE})，绑定推荐红娘: '${matchmaker.name}'`);
+  logEvent("deal", `[佣金结算] 介绍推广分成: ¥${promoComm} (${state.splits.promo}%)，红娘牵线分成: ¥${matchComm} (${state.splits.matchmaker}%)，平台收益: ¥${platformComm} (${state.splits.platform}%)`);
+
+  showPushNotification("【VIP会员开通通知】", {
+    "开通客户": user.name,
+    "微信账号": user.wechat,
+    "专属红娘": matchmaker.name,
+    "红娘代码": matchmaker.code
+  });
+
+  showPushNotification("【红娘推广佣金喜报】", {
+    "收益红娘": matchmaker.name,
+    "开通客户": user.name,
+    "获得分成": `¥${promoComm} (${state.splits.promo}%)`,
+    "账单状态": "已结算至红娘钱包"
+  });
 }
 
 function renderMatchmakerDesk() {
@@ -596,6 +708,19 @@ function completeRequest(requestId) {
   saveState();
   renderAll();
   showToast("已标记红娘联系进度");
+
+  const from = state.users.find((item) => item.id === request.fromUserId);
+  const to = state.users.find((item) => item.id === request.toUserId);
+  const matchmaker = getMatchmaker(request.matchmakerId);
+
+  logEvent("match", `红娘 '${matchmaker?.name}' 已联络双方并协助牵线：[${from.name}] 📱 [${to.name}]`);
+  
+  showPushNotification("【牵线成功进度通知】", {
+    "牵线红娘": matchmaker?.name || "专属红娘",
+    "心仪嘉宾": to.name,
+    "微信号码": to.wechat,
+    "温馨提示": "红娘已确认双方信息，请复制微信号添加好友并备注“缘定传媒人”。"
+  });
 }
 
 function renderAdmin() {
@@ -780,15 +905,53 @@ function saveProfile(event) {
 }
 
 function seedDeal() {
+  const latestReq = state.requests[0];
+  let clientName = "未知客户";
+  let mmName = "平台专属红娘";
+  let referralMatchmakerId = null;
+
+  if (latestReq) {
+    const fromUser = state.users.find(u => u.id === latestReq.fromUserId);
+    if (fromUser) {
+      clientName = fromUser.name;
+      referralMatchmakerId = fromUser.referralMatchmakerId;
+    }
+    const mm = getMatchmaker(latestReq.matchmakerId);
+    if (mm) mmName = mm.name;
+  } else {
+    const randomUser = state.users[Math.floor(Math.random() * state.users.length)];
+    if (randomUser) {
+      clientName = randomUser.name;
+      referralMatchmakerId = randomUser.referralMatchmakerId;
+    }
+  }
+
+  const promoMm = referralMatchmakerId ? getMatchmaker(referralMatchmakerId) : state.matchmakers[0];
+  const promoName = promoMm ? promoMm.name : mmName;
+
   state.deals.unshift({
     id: uid("d"),
-    requestId: state.requests[0]?.id || null,
+    requestId: latestReq?.id || null,
     amount: VIP_PRICE,
     createdAt: new Date().toISOString().slice(0, 10),
   });
   saveState();
   renderAll();
   showToast("已模拟新增一笔成交");
+
+  const promoComm = (VIP_PRICE * (state.splits.promo / 100)).toFixed(2);
+  const matchComm = (VIP_PRICE * (state.splits.matchmaker / 100)).toFixed(2);
+  const platformComm = (VIP_PRICE * (state.splits.platform / 100)).toFixed(2);
+
+  logEvent("sys", `管理员触发了一笔成交模拟（金额: ¥${VIP_PRICE}，绑定测试客户: ${clientName}）`);
+  logEvent("deal", `[模拟分账] 推广红娘 '${promoName}' 获推广分成: ¥${promoComm}，牵线红娘 '${mmName}' 获牵线分成: ¥${matchComm}，平台分配收益: ¥${platformComm}`);
+
+  showPushNotification("【喜报·交友业务模拟成交】", {
+    "成交客户": clientName,
+    "推广红娘": promoName,
+    "牵线红娘": mmName,
+    "结算分成总额": `¥${(Number(promoComm) + Number(matchComm)).toFixed(2)}`
+  });
 }
 
 // Account Modal Functions (Matchmaker only)
@@ -946,6 +1109,14 @@ function miniRegisterUser(event) {
   switchMiniTab("discover");
   renderAll();
   showToast(`注册成功！已为您登录为 ${name}`);
+
+  logEvent("user", `新客户在小程序端注册成功：${name} (${gender}·${newUser.age}岁·${newUser.city})`);
+  showPushNotification("【客户注册成功通知】", {
+    "注册客户": name,
+    "性别年龄": `${gender} · ${newUser.age}岁`,
+    "微信账号": newUser.wechat,
+    "职业城市": `${newUser.job} · ${newUser.city}`
+  });
 }
 
 // Mini Program Switch Existing User
@@ -959,19 +1130,113 @@ function miniSwitchUser() {
   switchMiniTab("discover");
   renderAll();
   showToast(`已成功登录：${user.name}`);
+
+  logEvent("user", `已在小程序端切换登录为客户：${user.name} (${user.vip ? "VIP 会员" : "普通用户"})`);
+  showPushNotification("【客户登录成功提醒】", {
+    "登录客户": user.name,
+    "微信账号": user.wechat,
+    "会员级别": user.vip ? "VIP 会员" : "普通用户",
+    "所在城市": user.city
+  });
 }
 
 // Mini Program Logout User
 function miniLogoutUser() {
+  const user = currentUser();
+  const oldName = user ? user.name : "未知";
   state.currentUserId = null;
   saveState();
   renderAll();
   showToast("已退出登录，当前为游客模式");
+
+  logEvent("user", `客户 '${oldName}' 已退出登录`);
 }
 
 // Mini Program Redirect guest to mine tab (for login/register)
 function miniToRegister() {
   switchMiniTab("mine");
+}
+
+function quickAddMember(gender) {
+  const maleNames = ["江寒", "陆云洲", "祁宴", "沈修远", "裴渡", "陈亦帆", "林子默", "顾景川", "陆言熙", "沈慕白", "宋怀言", "周子安"];
+  const femaleNames = ["温以凡", "桑稚", "许星若", "季秋", "姜泥", "沈星若", "温以乔", "姜暮烟", "许红豆", "林妙妙", "简言", "唐微微"];
+  const maleJobs = ["视频摄影师", "自媒体主播", "播客主编", "新媒体策划", "传媒大学讲师", "独立制片人", "内容创意导演", "音频总监"];
+  const femaleJobs = ["品牌公关总监", "时尚专栏作者", "纪录片策划", "新媒体主编", "娱乐记者", "配音演员", "创意法务", "广告制片"];
+  const cities = ["上海", "北京", "广州", "深圳", "杭州", "南京", "成都", "武汉"];
+  
+  const malePhotos = [
+    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1530268729831-4b0b9e170218?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=300&q=60"
+  ];
+  const femalePhotos = [
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=60",
+    "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=60"
+  ];
+
+  const bios = [
+    "做内容非常看重真诚，热爱看纪录片，周末喜欢在城市走走停停，期待遇到有共鸣的你。",
+    "工作比较饱和但生活安排得井井有条，平时喜欢摄影、手作和网球，希望我们能一起去旅行。",
+    "在传媒行业打拼，既向往高效的专业节奏，也珍惜松弛的周末生活，希望找个成熟有担当的人。",
+    "性格慢热但很真诚，平时喜欢研究咖啡、阅读和看老电影，希望能共同经营一段长久的关系。",
+    "热爱一切新鲜的事物，做品牌策划，平时爱打羽毛球，希望对方是个幽默有责任心的人。"
+  ];
+
+  const requirements = [
+    "希望你真诚坦率，有自己独立的空间和热爱，年龄 25-35 岁，在同城工作。",
+    "期待遇到一位情绪稳定、尊重彼此事业、同样喜欢生活和旅行的另一半。",
+    "希望男生有责任心，懂得沟通，愿意一起面对生活里琐碎的细节。",
+    "希望女生乐观善良，理解传媒行业的忙碌，愿意共同为未来做规划。"
+  ];
+
+  const name = gender === "男" 
+    ? maleNames[Math.floor(Math.random() * maleNames.length)]
+    : femaleNames[Math.floor(Math.random() * femaleNames.length)];
+  const job = gender === "男"
+    ? maleJobs[Math.floor(Math.random() * maleJobs.length)]
+    : femaleJobs[Math.floor(Math.random() * femaleJobs.length)];
+  const city = cities[Math.floor(Math.random() * cities.length)];
+  const age = Math.floor(Math.random() * 18) + 24;
+  const photoPool = gender === "男" ? malePhotos : femalePhotos;
+  const photo = photoPool[Math.floor(Math.random() * photoPool.length)];
+  const bio = bios[Math.floor(Math.random() * bios.length)];
+  const req = requirements[Math.floor(Math.random() * requirements.length)];
+  const wechat = `${gender === "男" ? "mr" : "ms"}_${name.toLowerCase() || "guest"}_${Math.floor(Math.random() * 899 + 100)}`;
+
+  const newId = uid("u");
+  const newUser = {
+    id: newId,
+    name: name,
+    gender: gender,
+    age: age,
+    city: city,
+    job: job,
+    wechat: wechat,
+    vip: Math.random() > 0.6,
+    referralMatchmakerId: Math.random() > 0.3 ? state.matchmakers[Math.floor(Math.random() * state.matchmakers.length)].id : null,
+    bio: bio,
+    requirements: req,
+    photo: photo
+  };
+
+  state.users.push(newUser);
+  saveState();
+  renderAll();
+
+  logEvent("user", `快捷生成单身${gender}嘉宾成功：${name} (${age}岁·${city}·${job})`);
+  showToast(`已快捷生成单身${gender}嘉宾：${name}`);
+
+  showPushNotification("【单身嘉宾注册通知】", {
+    "新入驻嘉宾": `${name} (${gender}·${age}岁)`,
+    "地区城市": city,
+    "职业岗位": job,
+    "微信账号": wechat
+  });
 }
 
 function bindEvents() {
@@ -1032,6 +1297,17 @@ function bindEvents() {
   $("#miniSwitchUserBtn").addEventListener("click", miniSwitchUser);
   $("#miniRegisterForm").addEventListener("submit", miniRegisterUser);
   $("#miniLogoutBtn").addEventListener("click", miniLogoutUser);
+
+  // 中台快捷助手事件绑定
+  $("#quickAddMaleBtn").addEventListener("click", () => quickAddMember("男"));
+  $("#quickAddFemaleBtn").addEventListener("click", () => quickAddMember("女"));
+  $("#clearConsoleLogsBtn").addEventListener("click", () => {
+    const container = $("#consoleLogs");
+    if (container) {
+      container.innerHTML = "";
+      logEvent("sys", "业务审计日志已清空");
+    }
+  });
 }
 
 bindEvents();
