@@ -291,23 +291,35 @@ async function initApp() {
   }, 4000);
 }
 
+function isMiniView() {
+  return document.body.getAttribute("data-role") === "mini" || window.location.port === "8096";
+}
+
+function isMatchmakerView() {
+  return document.body.getAttribute("data-role") === "matchmaker" || window.location.port === "8097";
+}
+
+function isAdminView() {
+  return document.body.getAttribute("data-role") === "admin" || window.location.port === "8098";
+}
+
 function handleRouting() {
   const port = window.location.port;
   let path = window.location.pathname;
 
   // 基础视觉隔离控制
-  if (port === "8096") {
+  if (isMiniView()) {
     document.body.className = "role-mini";
-  } else if (port === "8097") {
+  } else if (isMatchmakerView()) {
     document.body.className = "role-matchmaker";
-  } else if (port === "8098") {
+  } else if (isAdminView()) {
     document.body.className = "role-admin";
   } else {
     document.body.className = "";
   }
 
   // 路由跳转分发逻辑
-  if (port === "8096") {
+  if (isMiniView()) {
     switchView("mini");
     const loggedIn = !!state.currentUserId;
     if (!loggedIn) {
@@ -329,7 +341,7 @@ function handleRouting() {
     } else {
       navigate(loggedIn ? "/discover" : "/my", { replace: true });
     }
-  } else if (port === "8097") {
+  } else if (isMatchmakerView()) {
     switchView("matchmaker");
     const loggedIn = !!state.selectedMatchmakerId;
     if (path === "/workbench") {
@@ -347,7 +359,7 @@ function handleRouting() {
     } else {
       navigate(loggedIn ? "/workbench" : "/login", { replace: true });
     }
-  } else if (port === "8098") {
+  } else if (isAdminView()) {
     switchView("admin");
     const loggedIn = !!state.adminLoggedIn;
     if (path === "/console") {
@@ -625,6 +637,7 @@ function renderMiniApp() {
 
 function renderProfileForm() {
   const form = $("#profileForm");
+  if (!form) return;
   const user = currentUser();
   if (user) {
     Object.entries(user).forEach(([key, value]) => {
@@ -636,6 +649,7 @@ function renderProfileForm() {
 }
 
 function renderMineTabContent() {
+  if (!$("#miniMineUnregistered")) return;
   const user = currentUser();
   if (!user) {
     $("#miniMineUnregistered").style.display = "block";
@@ -734,7 +748,7 @@ function createRequest(targetUserId) {
   const target = state.users.find((item) => item.id === targetUserId);
   if (!user.vip) {
     showToast("请先扫码开通会员，再提交牵线请求");
-    const is8096 = window.location.port === "8096";
+    const is8096 = isMiniView();
     navigate(is8096 ? "/vip" : "/mini/vip");
     return;
   }
@@ -1371,7 +1385,7 @@ function mmAuthLogin() {
 
   state.selectedMatchmakerId = selectedId;
   saveState();
-  const is8097 = window.location.port === "8097";
+  const is8097 = isMatchmakerView();
   navigate(is8097 ? "/workbench" : "/matchmaker/workbench");
   logEvent("match", `红娘 '${m.name}' 成功登录红娘工作台`);
   showToast(`已登录为红娘：${m.name}`);
@@ -1404,7 +1418,7 @@ function mmAuthRegister(event) {
 
   form.reset();
   saveState();
-  const is8097 = window.location.port === "8097";
+  const is8097 = isMatchmakerView();
   navigate(is8097 ? "/workbench" : "/matchmaker/workbench");
   logEvent("match", `新红娘注册并登录成功：${name} [${code}]`);
   showToast(`红娘 ${name} 注册并登录成功`);
@@ -1416,7 +1430,7 @@ function mmAuthLogout() {
   
   state.selectedMatchmakerId = null;
   saveState();
-  const is8097 = window.location.port === "8097";
+  const is8097 = isMatchmakerView();
   navigate(is8097 ? "/login" : "/matchmaker/login");
   logEvent("match", `红娘 '${name}' 已退出工作台登录`);
   showToast("红娘已安全退出登录");
@@ -1429,7 +1443,7 @@ function adminAuthLogin(event) {
   if (password.toLowerCase() === "admin") {
     state.adminLoggedIn = true;
     saveState();
-    const is8098 = window.location.port === "8098";
+    const is8098 = isAdminView();
     navigate(is8098 ? "/console" : "/admin/console");
     logEvent("sys", "管理员成功安全登录管理控制台");
     showToast("管理员登录成功");
@@ -1441,7 +1455,7 @@ function adminAuthLogin(event) {
 function adminAuthLogout() {
   state.adminLoggedIn = false;
   saveState();
-  const is8098 = window.location.port === "8098";
+  const is8098 = isAdminView();
   navigate(is8098 ? "/login" : "/admin/login");
   logEvent("sys", "管理员已退出管理控制台");
   showToast("管理员已退出登录");
@@ -1496,7 +1510,7 @@ function miniRegisterUser(event) {
   
   form.reset();
   saveState();
-  const is8096 = window.location.port === "8096";
+  const is8096 = isMiniView();
   navigate(is8096 ? "/discover" : "/mini/discover");
   renderAll();
   showToast(`注册成功！已为您登录为 ${name}`);
@@ -1518,7 +1532,7 @@ function miniSwitchUser() {
 
   state.currentUserId = selectedId;
   saveState();
-  const is8096 = window.location.port === "8096";
+  const is8096 = isMiniView();
   navigate(is8096 ? "/discover" : "/mini/discover");
   renderAll();
   showToast(`已成功登录：${user.name}`);
@@ -1541,7 +1555,7 @@ function miniLogoutUser() {
   renderAll();
   showToast("已退出登录，当前为游客模式");
 
-  const is8096 = window.location.port === "8096";
+  const is8096 = isMiniView();
   navigate(is8096 ? "/my" : "/mini/my");
 
   logEvent("user", `客户 '${oldName}' 已退出登录`);
@@ -1549,7 +1563,7 @@ function miniLogoutUser() {
 
 // Mini Program Redirect guest to mine tab (for login/register)
 function miniToRegister() {
-  const is8096 = window.location.port === "8096";
+  const is8096 = isMiniView();
   navigate(is8096 ? "/my" : "/mini/my");
 }
 
@@ -1671,7 +1685,7 @@ function bindEvents() {
       }
       
       const tab = button.dataset.miniTab;
-      const is8096 = window.location.port === "8096";
+      const is8096 = isMiniView();
       const prefix = is8096 ? "" : "/mini";
       const tabPathMap = {
         discover: "/discover",
