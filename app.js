@@ -284,6 +284,13 @@ function getAgency(id) {
   return state.agencies.find((agency) => agency.id === id);
 }
 
+function renderAll() {
+  renderFilters();
+  renderMiniApp();
+  renderMatchmakerDesk();
+  renderAdmin();
+}
+
 function showToast(message) {
   const toast = $("#toast");
   toast.textContent = message;
