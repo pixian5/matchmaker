@@ -885,7 +885,7 @@ th {
 /* --- Mid-platform Assistant Layout --- */
 .mini-view-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 430px) 1fr;
+  grid-template-columns: minmax(320px, 430px) minmax(320px, 600px);
   gap: 24px;
   align-items: start;
 }
