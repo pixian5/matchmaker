@@ -266,6 +266,21 @@ async function initApp() {
     logEvent("sys", "数据库连接失败，已自动启用浏览器 LocalStorage 本机演示数据");
   }
   renderAll();
+  applyRoleRouting();
+}
+
+function applyRoleRouting() {
+  const port = window.location.port;
+  if (port === "8096") {
+    document.body.className = "role-mini";
+    switchView("mini");
+  } else if (port === "8097") {
+    document.body.className = "role-matchmaker";
+    switchView("matchmaker");
+  } else if (port === "8098") {
+    document.body.className = "role-admin";
+    switchView("admin");
+  }
 }
 
 function uid(prefix) {
