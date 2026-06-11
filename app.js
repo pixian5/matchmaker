@@ -1806,12 +1806,13 @@ function bindEvents() {
 
   if (selectTrigger && dropdownPanel && optionsList) {
     selectTrigger.addEventListener("focus", () => {
-      renderVipMatchmakers(selectTrigger.value);
+      renderVipMatchmakers("");
       dropdownPanel.style.display = "block";
     });
     
     selectTrigger.addEventListener("click", (e) => {
       e.stopPropagation();
+      renderVipMatchmakers("");
       dropdownPanel.style.display = "block";
     });
 
