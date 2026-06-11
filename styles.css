@@ -885,9 +885,11 @@ th {
 /* --- Mid-platform Assistant Layout --- */
 .mini-view-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 430px) minmax(320px, 600px);
+  grid-template-columns: minmax(320px, 430px) 1fr;
   gap: 24px;
   align-items: start;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .phone-column {
