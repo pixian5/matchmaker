@@ -1248,6 +1248,10 @@ function renderMatchmakerDesk() {
     $("#mmRegisterAgencySelect").innerHTML = state.agencies
       .map((agency) => `<option value="${agency.id}">${agency.name}</option>`)
       .join("");
+    $("#mmAuthLoginPanel").style.display = "block";
+    $("#mmAuthRegisterPanel").style.display = "none";
+    $("#mmAuthTabLoginBtn").classList.add("active");
+    $("#mmAuthTabRegisterBtn").classList.remove("active");
     return;
   }
 
@@ -2092,7 +2096,10 @@ function bindEvents() {
       mmTabLogin.classList.add("active");
       mmTabReg.classList.remove("active");
       const mmAuthLoginPanel = $("#mmAuthLoginPanel");
-      if (mmAuthLoginPanel) mmAuthLoginPanel.classList.add("active");
+      if (mmAuthLoginPanel) {
+        mmAuthLoginPanel.classList.add("active");
+        mmAuthLoginPanel.style.display = "block";
+      }
       const mmAuthRegisterPanel = $("#mmAuthRegisterPanel");
       if (mmAuthRegisterPanel) mmAuthRegisterPanel.style.display = "none";
     });
