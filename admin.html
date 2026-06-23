@@ -40,10 +40,30 @@
               </div>
             </div>
 
-            <div class="metrics-grid" id="metricsGrid"></div>
+            <div class="admin-layout">
+              <aside class="admin-menu" aria-label="管理后台栏目">
+                <button class="admin-menu-item active" type="button" data-admin-section="overview">概览</button>
+                <button class="admin-menu-item" type="button" data-admin-section="splits">分成比例</button>
+                <button class="admin-menu-item" type="button" data-admin-section="agencies">机构管理</button>
+                <button class="admin-menu-item" type="button" data-admin-section="matchmakers">红娘管理</button>
+                <button class="admin-menu-item" type="button" data-admin-section="customers">客户信息</button>
+                <button class="admin-menu-item" type="button" data-admin-section="promoCodes">兑换码</button>
+              </aside>
 
-            <div class="admin-grid">
-              <section class="panel">
+              <div class="admin-content">
+                <section class="admin-section active" data-admin-panel="overview">
+                  <div class="metrics-grid" id="metricsGrid"></div>
+                  <section class="panel">
+                    <div class="section-title">
+                      <h3>图表概览</h3>
+                      <span>客户、成交、金额</span>
+                    </div>
+                    <div id="chartPanel" class="chart-panel"></div>
+                  </section>
+                </section>
+
+                <section class="admin-section" data-admin-panel="splits">
+                  <section class="panel">
                 <div class="section-title">
                   <h3>分成比例</h3>
                   <span>合计需为 100%</span>
@@ -64,9 +84,11 @@
                   <button class="primary-button" type="submit">保存分成</button>
                 </form>
                 <div id="splitPreview" class="split-preview"></div>
-              </section>
+                  </section>
+                </section>
 
-              <section class="panel">
+                <section class="admin-section" data-admin-panel="agencies">
+                  <section class="panel">
                 <div class="section-title">
                   <h3>添加机构</h3>
                   <span id="agencyCount">0 家</span>
@@ -77,9 +99,11 @@
                   <button class="secondary-button" type="submit">添加机构</button>
                 </form>
                 <div id="agencyList" class="plain-list"></div>
-              </section>
+                  </section>
+                </section>
 
-              <section class="panel">
+                <section class="admin-section" data-admin-panel="matchmakers">
+                  <section class="panel">
                 <div class="section-title">
                   <h3>添加红娘</h3>
                   <span id="matchmakerCount">0 位</span>
@@ -91,9 +115,11 @@
                   <button class="secondary-button" type="submit">添加红娘</button>
                 </form>
                 <div id="matchmakerList" class="plain-list"></div>
-              </section>
+                  </section>
+                </section>
 
-              <section class="panel wide-panel">
+                <section class="admin-section" data-admin-panel="customers">
+                  <section class="panel wide-panel">
                 <div class="section-title">
                   <h3>客户信息</h3>
                   <span id="customerCount">0 位</span>
@@ -114,10 +140,12 @@
                     <tbody id="customerRows"></tbody>
                   </table>
                 </div>
-              </section>
+                  </section>
+                </section>
 
-              <!-- 会员兑换码管理 -->
-              <section class="panel wide-panel">
+                <section class="admin-section" data-admin-panel="promoCodes">
+                  <!-- 会员兑换码管理 -->
+                  <section class="panel wide-panel">
                 <div class="section-title">
                   <h3>会员兑换码管理</h3>
                   <button class="secondary-button" id="generatePromoCodeBtn" type="button" style="width: auto;">+ 随机生成兑换码</button>
@@ -135,15 +163,9 @@
                     <tbody id="promoCodeRows"></tbody>
                   </table>
                 </div>
-              </section>
-
-              <section class="panel wide-panel">
-                <div class="section-title">
-                  <h3>图表概览</h3>
-                  <span>客户、成交、金额</span>
-                </div>
-                <div id="chartPanel" class="chart-panel"></div>
-              </section>
+                  </section>
+                </section>
+              </div>
             </div>
           </div>
         </section>

@@ -185,6 +185,7 @@ const seedState = {
 let state = structuredClone(seedState);
 let session = loadSession();
 let apiAvailable = false;
+let currentAdminSection = "overview";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -1374,6 +1375,24 @@ function renderAdmin() {
   renderMatchmakers();
   renderCustomers();
   renderChart();
+  switchAdminSection(currentAdminSection);
+}
+
+function switchAdminSection(section) {
+  const panels = $$("[data-admin-panel]");
+  if (!panels.length) return;
+
+  const nextSection = panels.some((panel) => panel.dataset.adminPanel === section)
+    ? section
+    : "overview";
+  currentAdminSection = nextSection;
+
+  panels.forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.adminPanel === nextSection);
+  });
+  $$("[data-admin-section]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.adminSection === nextSection);
+  });
 }
 
 function renderMetrics() {
@@ -2093,7 +2112,14 @@ function bindEvents() {
   
   // 管理员后台兑换码生成按钮绑定
   safeBind("#generatePromoCodeBtn", "click", generateRandomPromoCode);
-  
+
+  // 管理员后台左侧栏目导航：点击切换右侧显示的栏目
+  $$("[data-admin-section]").forEach((button) => {
+    button.addEventListener("click", () => {
+      switchAdminSection(button.dataset.adminSection);
+    });
+  });
+
   safeBind("#profileForm", "submit", saveProfile);
   safeBind("#splitForm", "submit", saveSplits);
   safeBind("#agencyForm", "submit", addAgency);
