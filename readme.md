@@ -37,6 +37,16 @@ open /Users/x/code/mediapeople/index.html
 http://uk.sbbz.tech:8095/
 ```
 
+角色端口：
+
+```text
+http://uk.sbbz.tech:8096/  小程序客户入口
+http://uk.sbbz.tech:8097/  红娘工作台入口
+http://uk.sbbz.tech:8098/  管理后台入口
+```
+
+以上入口共用同一个 API 和 PostgreSQL 数据库，端口只负责区分前端角色界面。
+
 服务器部署目录：
 
 ```text
