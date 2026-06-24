@@ -242,8 +242,8 @@ function ensureStateDefaults(s) {
     }
   }
   s.requests = (s.requests || []).map((request) => {
-    if (request.maleContacted === undefined) request.maleContacted = request.status === "已联系双方";
-    if (request.femaleContacted === undefined) request.femaleContacted = request.status === "已联系双方";
+    if (request.maleContacted === undefined) request.maleContacted = request.status === "已联系双方" || request.status === "来和双方对话";
+    if (request.femaleContacted === undefined) request.femaleContacted = request.status === "已联系双方" || request.status === "来和双方对话";
     request.status = getRequestContactStatus(request);
     if (request.memberChatEnabled === undefined) request.memberChatEnabled = false;
     return request;
@@ -257,9 +257,9 @@ function ensureStateDefaults(s) {
 }
 
 function getRequestContactStatus(request) {
-  if (request.maleContacted && request.femaleContacted) return "已联系双方";
-  if (request.maleContacted) return "已联系男方";
-  if (request.femaleContacted) return "已联系女方";
+  if (request.maleContacted && request.femaleContacted) return "来和双方对话";
+  if (request.maleContacted) return "联系男方";
+  if (request.femaleContacted) return "联系女方";
   return "待红娘联系";
 }
 
@@ -1091,7 +1091,7 @@ function renderMineTabContent() {
 
     // 动态渲染客户数据指标面板
     const userReqs = state.requests.filter(r => r.fromUserId === user.id);
-    const unlockedReqs = userReqs.filter(r => r.status === "已联系双方");
+    const unlockedReqs = userReqs.filter(r => r.status === "来和双方对话");
     const referralMm = user.referralMatchmakerId ? getMatchmaker(user.referralMatchmakerId) : null;
 
     $("#mineStatRequests").textContent = userReqs.length;
@@ -1397,7 +1397,7 @@ function renderRequests() {
         const { from, to } = getRequestUsers(request);
         const matchmaker = getMatchmaker(request.matchmakerId);
         const otherUser = request.fromUserId === user.id ? to : from;
-        const unlockedWechat = request.status === "已联系双方" ? `<div class="muted">对方微信：${otherUser?.wechat || "待同步"}</div>` : "";
+        const unlockedWechat = request.status === "来和双方对话" ? `<div class="muted">对方微信：${otherUser?.wechat || "待同步"}</div>` : "";
         const memberChatStatus =
           request.memberChatEnabled
             ? `<div class="muted">会员互聊：已开启</div>`
@@ -1873,7 +1873,7 @@ function renderMatchmakerDesk() {
   const requests = state.requests.filter(
     (request) => request.matchmakerId === mmId,
   );
-  $("#notificationCount").textContent = `${requests.filter((item) => item.status !== "已联系双方").length} 条待处理`;
+  $("#notificationCount").textContent = `${requests.filter((item) => item.status !== "来和双方对话").length} 条待处理`;
   $("#notificationList").innerHTML =
     requests
       .map((request) => {
@@ -1888,7 +1888,7 @@ function renderMatchmakerDesk() {
             ? `<button class="secondary-button${request.femaleContacted ? " contacted" : ""}" data-contact-request="${request.id}" data-contact-side="female" type="button">${request.femaleContacted ? "✓ 联系女方" : "联系女方"}</button>`
             : "";
         const approveBtn =
-          request.status === "已联系双方" && !request.memberChatEnabled
+          request.status === "来和双方对话" && !request.memberChatEnabled
             ? `<button class="ghost-button" data-approve-chat="${request.id}" type="button" style="margin-top:8px;">同意会员互聊</button>`
             : "";
         const approvedTag =
@@ -2050,7 +2050,7 @@ async function contactRequestSide(requestId, side) {
 
   logEvent("match", `红娘 '${matchmaker?.name}' 联系${side === "male" ? "男方" : "女方"}：${contactedUser?.name || "会员"}，当前进度 ${request.status}`);
 
-  if (request.status === "已联系双方") {
+  if (request.status === "来和双方对话") {
     showPushNotification("【牵线成功进度通知】", {
       "牵线红娘": matchmaker?.name || "专属红娘",
       "心仪嘉宾": to.name,

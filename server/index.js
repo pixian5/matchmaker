@@ -425,19 +425,19 @@ function publicState(data) {
 function ensureRequestDefaults(request) {
   if (request.memberChatEnabled === undefined) request.memberChatEnabled = false;
   if (request.maleContacted === undefined) {
-    request.maleContacted = request.status === "已联系双方";
+    request.maleContacted = request.status === "已联系双方" || request.status === "来和双方对话";
   }
   if (request.femaleContacted === undefined) {
-    request.femaleContacted = request.status === "已联系双方";
+    request.femaleContacted = request.status === "已联系双方" || request.status === "来和双方对话";
   }
   request.status = getRequestContactStatus(request);
   return request;
 }
 
 function getRequestContactStatus(request) {
-  if (request.maleContacted && request.femaleContacted) return "已联系双方";
-  if (request.maleContacted) return "已联系男方";
-  if (request.femaleContacted) return "已联系女方";
+  if (request.maleContacted && request.femaleContacted) return "来和双方对话";
+  if (request.maleContacted) return "联系男方";
+  if (request.femaleContacted) return "联系女方";
   return "待红娘联系";
 }
 
@@ -1276,7 +1276,7 @@ app.patch("/api/matchmaker/requests/:id/approve-member-chat", requireAuth(["matc
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
-  if (req.status !== "已联系双方") return response.status(400).json({ error: "contact_first_required" });
+  if (req.status !== "来和双方对话") return response.status(400).json({ error: "contact_first_required" });
 
   req.memberChatEnabled = true;
   await pool.query(
