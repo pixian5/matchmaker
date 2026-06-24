@@ -17,7 +17,7 @@ cd "$REPO_DIR"
 
 # 拉取最新代码
 log "正在 git pull..."
-git pull origin main 2>&1 | tee -a "$LOG_FILE"
+git pull origin master 2>&1 | tee -a "$LOG_FILE"
 
 # 检查是否有 server/ 变更（需要重新构建 api 容器）
 CHANGED_FILES=$(git diff HEAD@{1} HEAD --name-only 2>/dev/null || echo "")
