@@ -5,6 +5,7 @@ const API_BASE = "/api";
 let currentDiscoverIndex = 0;
 let activeMiniChatThreadId = null;
 let activeMatchmakerChatThreadId = null;
+let matchmakerChatModalOpen = false;
 
 const seedState = {
   currentUserId: "u1",
@@ -2140,7 +2141,7 @@ function renderMatchmakerChats(matchmakerId) {
       .join("") || `<div class="request-card muted">牵线单创建后，这里会自动出现会员聊天。</div>`;
 
   const activeThread = getThreadById(activeMatchmakerChatThreadId);
-  if (!activeThread) {
+  if (!activeThread || !matchmakerChatModalOpen) {
     panel.style.display = "none";
     panel.classList.remove("show");
     return;
@@ -2189,6 +2190,7 @@ function openThreeWayChat(requestId) {
   );
   if (thread) {
     activeMatchmakerChatThreadId = thread.id;
+    matchmakerChatModalOpen = true;
     showToast("已打开三方对话");
   } else {
     showToast("未找到三方对话，请刷新页面");
@@ -2250,6 +2252,7 @@ async function contactRequestSide(requestId, side) {
     }
     if (thread) {
       activeMatchmakerChatThreadId = thread.id;
+      matchmakerChatModalOpen = true;
     }
   }
 
@@ -3403,6 +3406,7 @@ function bindEvents() {
     const openThreadButton = event.target.closest("[data-open-mm-thread]");
     if (openThreadButton) {
       activeMatchmakerChatThreadId = openThreadButton.dataset.openMmThread;
+      matchmakerChatModalOpen = true;
       renderAll();
     }
   });
@@ -3415,6 +3419,7 @@ function bindEvents() {
     const closeBtn = event.target.closest("#closeMatchmakerChatModalBtn");
     if (event.target === event.currentTarget || closeBtn) {
       console.log("Closing matchmaker chat panel modal...");
+      matchmakerChatModalOpen = false;
       activeMatchmakerChatThreadId = null;
       renderAll();
     }
