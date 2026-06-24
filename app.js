@@ -3411,8 +3411,10 @@ function bindEvents() {
   safeBind("#matchmakerChatForm", "submit", sendMatchmakerChatMessage);
 
   safeBind("#matchmakerChatPanel", "click", (event) => {
+    console.log("Chat panel clicked, target ID:", event.target.id, "class:", event.target.className);
     const closeBtn = event.target.closest("#closeMatchmakerChatModalBtn");
     if (event.target === event.currentTarget || closeBtn) {
+      console.log("Closing matchmaker chat panel modal...");
       activeMatchmakerChatThreadId = null;
       renderAll();
     }
