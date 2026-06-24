@@ -976,7 +976,7 @@ function renderProfiles() {
       .join("") || `<div class="request-card muted">暂无符合筛选条件的资料。</div>`;
 }
 
-function createRequest(targetUserId) {
+async function createRequest(targetUserId) {
   const user = currentUser();
   const target = state.users.find((item) => item.id === targetUserId);
   if (!user.vip) {
@@ -999,17 +999,41 @@ function createRequest(targetUserId) {
 
   const matchmakerId =
     user.referralMatchmakerId || target.referralMatchmakerId || state.matchmakers[0]?.id;
-  state.requests.unshift({
-    id: uid("r"),
-    fromUserId: user.id,
-    toUserId: targetUserId,
-    matchmakerId,
-    status: "待红娘联系",
-    createdAt: new Date().toISOString(),
-  });
-  saveState();
-  renderAll();
-  showToast(`已通知红娘为你和${target.name}牵线`);
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/client/match-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ targetUserId })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast(`已通知红娘为你和${target.name}牵线`);
+    } catch (err) {
+      console.warn("API match request failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    state.requests.unshift({
+      id: uid("r"),
+      fromUserId: user.id,
+      toUserId: targetUserId,
+      matchmakerId,
+      status: "待红娘联系",
+      createdAt: new Date().toISOString(),
+    });
+    saveState();
+    renderAll();
+    showToast(`已通知红娘为你和${target.name}牵线`);
+  }
 
   const matchmaker = getMatchmaker(matchmakerId);
   logEvent("user", `客户 '${user.name}' 申请认识嘉宾 '${target.name}'，已指派红娘 '${matchmaker?.name || "未知"}'`);
@@ -1052,7 +1076,7 @@ function renderRequests() {
       .join("") || `<div class="request-card muted">还没有牵线请求。</div>`;
 }
 
-function becomeVip() {
+async function becomeVip() {
   const code = $("#referralCodeInput").value.trim();
   const matchmaker = state.matchmakers.find(
     (item) => item.code.toUpperCase() === code.toUpperCase(),
@@ -1063,18 +1087,41 @@ function becomeVip() {
   }
 
   const user = currentUser();
-  user.vip = true;
-  user.vipExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  user.referralMatchmakerId = matchmaker.id;
-  state.deals.unshift({
-    id: uid("d"),
-    requestId: null,
-    amount: VIP_PRICE,
-    createdAt: new Date().toISOString().slice(0, 10),
-  });
-  saveState();
-  renderAll();
-  showToast(`已开通 VIP，推广红娘为${matchmaker.name}`);
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/client/vip/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ referralCode: code })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast(`已开通 VIP，推广红娘为${matchmaker.name}`);
+    } catch (err) {
+      console.warn("API become vip failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    user.vip = true;
+    user.vipExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    user.referralMatchmakerId = matchmaker.id;
+    state.deals.unshift({
+      id: uid("d"),
+      requestId: null,
+      amount: VIP_PRICE,
+      createdAt: new Date().toISOString().slice(0, 10),
+    });
+    saveState();
+    renderAll();
+    showToast(`已开通 VIP，推广红娘为${matchmaker.name}`);
+  }
 
   const promoComm = (VIP_PRICE * (state.splits.promo / 100)).toFixed(2);
   const matchComm = (VIP_PRICE * (state.splits.matchmaker / 100)).toFixed(2);
@@ -1131,7 +1178,7 @@ function renderVipMatchmakers(filterKeyword = "") {
   listContainer.innerHTML = html;
 }
 
-function redeemVip() {
+async function redeemVip() {
   const rawCode = $("#vipPromoCodeInput").value.trim().toUpperCase();
   if (!rawCode) {
     showToast("请输入兑换码！");
@@ -1159,38 +1206,73 @@ function redeemVip() {
     return;
   }
 
-  if (!promoCode.infinite) {
-    promoCode.used = true;
-    promoCode.usedBy = user.id;
-  }
-
-  user.vip = true;
-  user.vipExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  
   const redeemBtn = $("#redeemVipBtn");
-  if (redeemBtn) {
-    redeemBtn.textContent = "有效";
-    redeemBtn.style.background = "#10b981"; // green
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/client/vip/redeem`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ code: rawCode })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      
+      if (redeemBtn) {
+        redeemBtn.textContent = "有效";
+        redeemBtn.style.background = "#10b981"; // green
+      }
+      
+      renderAll();
+      $("#vipPromoCodeInput").value = "";
+    } catch (err) {
+      console.warn("API redeem VIP failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    if (!promoCode.infinite) {
+      promoCode.used = true;
+      promoCode.usedBy = user.id;
+    }
+
+    user.vip = true;
+    user.vipExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    
+    if (redeemBtn) {
+      redeemBtn.textContent = "有效";
+      redeemBtn.style.background = "#10b981"; // green
+    }
+
+    let matchmaker = null;
+    if (promoCode.matchmakerId) {
+      matchmaker = getMatchmaker(promoCode.matchmakerId);
+      if (matchmaker) {
+        user.referralMatchmakerId = matchmaker.id;
+      }
+    }
+
+    state.deals.unshift({
+      id: uid("d"),
+      requestId: null,
+      amount: VIP_PRICE,
+      createdAt: new Date().toISOString().slice(0, 10),
+    });
+
+    saveState();
+    renderAll();
+    $("#vipPromoCodeInput").value = "";
   }
 
   let matchmaker = null;
   if (promoCode.matchmakerId) {
     matchmaker = getMatchmaker(promoCode.matchmakerId);
-    if (matchmaker) {
-      user.referralMatchmakerId = matchmaker.id;
-    }
   }
-
-  state.deals.unshift({
-    id: uid("d"),
-    requestId: null,
-    amount: VIP_PRICE,
-    createdAt: new Date().toISOString().slice(0, 10),
-  });
-
-  saveState();
-  renderAll();
-  $("#vipPromoCodeInput").value = "";
 
   if (matchmaker) {
     showToast(`兑换成功！专属红娘为${matchmaker.name}`);
@@ -1260,7 +1342,7 @@ function renderPromoCodes() {
       .join("") || `<tr><td colspan="4" class="text-center muted">暂无会员兑换码数据。</td></tr>`;
 }
 
-function generateRandomPromoCode() {
+async function generateRandomPromoCode() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let randomCode = "";
   for (let i = 0; i < 8; i++) {
@@ -1283,16 +1365,37 @@ function generateRandomPromoCode() {
     matchmakerId = state.matchmakers[idx].id;
   }
 
-  const newCode = {
-    code: randomCode,
-    matchmakerId: matchmakerId,
-    used: false,
-    usedBy: null,
-  };
-
-  state.promoCodes.unshift(newCode);
-  saveState();
-  renderAll();
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/promo-codes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ code: randomCode, matchmakerId })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+    } catch (err) {
+      console.warn("API generate promo code failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    const newCode = {
+      code: randomCode,
+      matchmakerId: matchmakerId,
+      used: false,
+      usedBy: null,
+    };
+    state.promoCodes.unshift(newCode);
+    saveState();
+    renderAll();
+  }
 
   const mm = matchmakerId ? getMatchmaker(matchmakerId) : null;
   logEvent("sys", `管理员随机生成了新会员兑换码：${randomCode} (关联红娘: ${mm ? mm.name : "无"})`);
@@ -1367,13 +1470,36 @@ function renderMatchmakerDesk() {
       .join("") || `<div class="contact-card muted">接到牵线请求后会显示双方微信。</div>`;
 }
 
-function completeRequest(requestId) {
+async function completeRequest(requestId) {
   const request = state.requests.find((item) => item.id === requestId);
   if (!request) return;
-  request.status = "已联系双方";
-  saveState();
-  renderAll();
-  showToast("已标记红娘联系进度");
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/matchmaker/requests/${requestId}/contacted`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast("已标记红娘联系进度");
+    } catch (err) {
+      console.warn("API complete request failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    request.status = "已联系双方";
+    saveState();
+    renderAll();
+    showToast("已标记红娘联系进度");
+  }
 
   const from = state.users.find((item) => item.id === request.fromUserId);
   const to = state.users.find((item) => item.id === request.toUserId);
@@ -1539,68 +1665,171 @@ function renderChart() {
     .join("");
 }
 
-function addAgency(event) {
+async function addAgency(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  state.agencies.push({
-    id: uid("a"),
-    name: form.elements.name.value.trim(),
-    city: form.elements.city.value.trim(),
-  });
-  form.reset();
-  saveState();
-  renderAll();
-  showToast("机构已添加");
+  const name = form.elements.name.value.trim();
+  const city = form.elements.city.value.trim();
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/agencies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ name, city })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      form.reset();
+      renderAll();
+      showToast("机构已添加");
+    } catch (err) {
+      console.warn("API add agency failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    state.agencies.push({
+      id: uid("a"),
+      name,
+      city,
+    });
+    form.reset();
+    saveState();
+    renderAll();
+    showToast("机构已添加");
+  }
 }
 
-function addMatchmaker(event) {
+async function addMatchmaker(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  state.matchmakers.push({
-    id: uid("m"),
-    name: form.elements.name.value.trim(),
-    agencyId: form.elements.agencyId.value,
-    code: form.elements.code.value.trim().toUpperCase(),
-  });
-  form.reset();
-  saveState();
-  renderAll();
-  showToast("红娘已添加");
+  const name = form.elements.name.value.trim();
+  const agencyId = form.elements.agencyId.value;
+  const code = form.elements.code.value.trim().toUpperCase();
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/matchmakers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ name, agencyId, code })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      form.reset();
+      renderAll();
+      showToast("红娘已添加");
+    } catch (err) {
+      console.warn("API add matchmaker failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    state.matchmakers.push({
+      id: uid("m"),
+      name,
+      agencyId,
+      code,
+    });
+    form.reset();
+    saveState();
+    renderAll();
+    showToast("红娘已添加");
+  }
 }
 
-function saveSplits(event) {
+async function saveSplits(event) {
   event.preventDefault();
   const form = event.currentTarget;
-  const next = {
-    promo: Number(form.elements.promo.value),
-    matchmaker: Number(form.elements.matchmaker.value),
-    platform: Number(form.elements.platform.value),
-  };
-  const total = next.promo + next.matchmaker + next.platform;
+  const promo = Number(form.elements.promo.value);
+  const matchmaker = Number(form.elements.matchmaker.value);
+  const platform = Number(form.elements.platform.value);
+  const total = promo + matchmaker + platform;
   if (total !== 100) {
     showToast(`当前合计为 ${total}%，请调整为 100%`);
     return;
   }
-  state.splits = next;
-  saveState();
-  renderAll();
-  showToast("分成比例已保存");
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/splits`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ promo, matchmaker, platform })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast("分成比例已保存");
+    } catch (err) {
+      console.warn("API save splits failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    state.splits = { promo, matchmaker, platform };
+    saveState();
+    renderAll();
+    showToast("分成比例已保存");
+  }
 }
 
-function saveProfile(event) {
+async function saveProfile(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const user = currentUser();
+  const updatedData = {};
   ["name", "gender", "city", "job", "wechat", "bio", "requirements"].forEach((key) => {
-    user[key] = form.elements[key].value.trim();
+    updatedData[key] = form.elements[key].value.trim();
   });
-  user.age = Number(form.elements.age.value);
-  saveState();
-  renderAll();
-  showToast("个人资料已保存");
+  updatedData.age = Number(form.elements.age.value);
+
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/client/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify(updatedData)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast("个人资料已保存");
+    } catch (err) {
+      console.warn("API save profile failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    Object.assign(user, updatedData);
+    saveState();
+    renderAll();
+    showToast("个人资料已保存");
+  }
 }
 
-function seedDeal() {
+async function seedDeal() {
   const latestReq = state.requests[0];
   let clientName = "未知客户";
   let mmName = "平台专属红娘";
@@ -1625,15 +1854,37 @@ function seedDeal() {
   const promoMm = referralMatchmakerId ? getMatchmaker(referralMatchmakerId) : state.matchmakers[0];
   const promoName = promoMm ? promoMm.name : mmName;
 
-  state.deals.unshift({
-    id: uid("d"),
-    requestId: latestReq?.id || null,
-    amount: VIP_PRICE,
-    createdAt: new Date().toISOString().slice(0, 10),
-  });
-  saveState();
-  renderAll();
-  showToast("已模拟新增一笔成交");
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/admin/deals/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() }
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+      showToast("已模拟新增一笔成交");
+    } catch (err) {
+      console.warn("API simulate deal failed, fallback to local:", err);
+      showToast("操作失败：" + err.message);
+      return;
+    }
+  } else {
+    state.deals.unshift({
+      id: uid("d"),
+      requestId: latestReq?.id || null,
+      amount: VIP_PRICE,
+      createdAt: new Date().toISOString().slice(0, 10),
+    });
+    saveState();
+    renderAll();
+    showToast("已模拟新增一笔成交");
+  }
 
   const promoComm = (VIP_PRICE * (state.splits.promo / 100)).toFixed(2);
   const matchComm = (VIP_PRICE * (state.splits.matchmaker / 100)).toFixed(2);
@@ -2313,7 +2564,7 @@ function bindEvents() {
     }
   });
 
-  safeBind("#realNameForm", "submit", (event) => {
+  safeBind("#realNameForm", "submit", async (event) => {
     event.preventDefault();
     const user = currentUser();
     if (!user) return;
@@ -2344,16 +2595,38 @@ function bindEvents() {
         return;
       }
       phone = phoneInput;
-      user.phone = phone;
     }
 
-    user.realName = realName;
-    user.idCard = idCard;
-    user.realNameVerified = true;
-
-    saveState();
-    renderAll();
-    showToast("实名认证成功！");
+    if (apiAvailable) {
+      try {
+        const res = await fetch(`${API_BASE}/client/real-name`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body: JSON.stringify({ realName, idCard, phone })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "failed");
+        }
+        const data = await res.json();
+        state = data.state;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        renderAll();
+        showToast("实名认证成功！");
+      } catch (err) {
+        console.warn("API real name failed, fallback to local:", err);
+        showToast("操作失败：" + err.message);
+        return;
+      }
+    } else {
+      user.phone = phone;
+      user.realName = realName;
+      user.idCard = idCard;
+      user.realNameVerified = true;
+      saveState();
+      renderAll();
+      showToast("实名认证成功！");
+    }
 
     window.setTimeout(() => {
       const modal = $("#realNameModal");

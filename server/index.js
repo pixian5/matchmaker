@@ -295,15 +295,12 @@ async function initDatabase() {
       updated_at timestamptz not null default now()
     )
   `);
-  await pool.query(
-    `
-      insert into app_state (id, data)
-      values (1, $1::jsonb)
-      on conflict (id) do nothing
-    `,
-    [JSON.stringify(seedState)],
-  );
-  await syncNormalizedState(await readState());
+  const userCountRes = await pool.query("select count(*) from users");
+  const count = Number(userCountRes.rows[0].count);
+  if (count === 0) {
+    console.log("Database tables are empty. Seeding database with initial seedState...");
+    await syncNormalizedState(seedState);
+  }
 }
 
 function validateState(data) {
@@ -404,30 +401,37 @@ function normalizeEmail(value) {
 }
 
 async function readState() {
-  const result = await pool.query("select data from app_state where id = 1");
-  return result.rows[0]?.data || seedState;
+  const agenciesRes = await pool.query("select raw from agencies order by id");
+  const matchmakersRes = await pool.query("select raw from matchmakers order by id");
+  const usersRes = await pool.query("select raw from users order by id");
+  const requestsRes = await pool.query("select raw from match_requests order by raw->>'createdAt' desc, id");
+  const dealsRes = await pool.query("select raw from deals order by raw->>'createdAt' desc, id");
+  const promoCodesRes = await pool.query("select raw from promo_codes order by code");
+  const settingsRes = await pool.query("select data from app_settings where id = 'runtime'");
+
+  const runtimeSettings = settingsRes.rows[0]?.data || {
+    currentUserId: "u1",
+    selectedMatchmakerId: null,
+    adminLoggedIn: false,
+    splits: { promo: 20, matchmaker: 35, platform: 45 }
+  };
+
+  return {
+    currentUserId: runtimeSettings.currentUserId,
+    selectedMatchmakerId: runtimeSettings.selectedMatchmakerId,
+    adminLoggedIn: runtimeSettings.adminLoggedIn,
+    splits: runtimeSettings.splits,
+    agencies: agenciesRes.rows.map(r => r.raw),
+    matchmakers: matchmakersRes.rows.map(r => r.raw),
+    users: usersRes.rows.map(r => r.raw),
+    requests: requestsRes.rows.map(r => r.raw),
+    deals: dealsRes.rows.map(r => r.raw),
+    promoCodes: promoCodesRes.rows.map(r => r.raw),
+  };
 }
 
 async function writeState(data) {
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    await client.query(
-      `
-        update app_state
-        set data = $1::jsonb, updated_at = now()
-        where id = 1
-      `,
-      [JSON.stringify(data)],
-    );
-    await syncNormalizedState(data, client);
-    await client.query("commit");
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
+  await syncNormalizedState(data);
 }
 
 function asDate(value) {
@@ -443,28 +447,23 @@ async function syncNormalizedState(data, existingClient = null) {
       await client.query("begin");
     }
 
-    await client.query(`
-      truncate table
-        deals,
-        match_requests,
-        promo_codes,
-        users,
-        matchmakers,
-        agencies,
-        app_settings
-      restart identity cascade
-    `);
-
+    // 1. UPSERT agencies
     for (const agency of data.agencies || []) {
       await client.query(
         `
           insert into agencies (id, name, city, raw)
           values ($1, $2, $3, $4::jsonb)
+          on conflict (id) do update set
+            name = excluded.name,
+            city = excluded.city,
+            raw = excluded.raw,
+            updated_at = now()
         `,
         [agency.id, agency.name, agency.city || null, JSON.stringify(agency)],
       );
     }
 
+    // 2. UPSERT matchmakers
     for (const matchmaker of data.matchmakers || []) {
       await client.query(
         `
@@ -472,6 +471,17 @@ async function syncNormalizedState(data, existingClient = null) {
             id, agency_id, name, code, phone, email, status, password_hash, registered_at, raw
           )
           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+          on conflict (id) do update set
+            agency_id = excluded.agency_id,
+            name = excluded.name,
+            code = excluded.code,
+            phone = excluded.phone,
+            email = excluded.email,
+            status = excluded.status,
+            password_hash = excluded.password_hash,
+            registered_at = excluded.registered_at,
+            raw = excluded.raw,
+            updated_at = now()
         `,
         [
           matchmaker.id,
@@ -488,6 +498,7 @@ async function syncNormalizedState(data, existingClient = null) {
       );
     }
 
+    // 3. UPSERT users
     for (const user of data.users || []) {
       await client.query(
         `
@@ -497,6 +508,23 @@ async function syncNormalizedState(data, existingClient = null) {
             real_name_verified, raw
           )
           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)
+          on conflict (id) do update set
+            name = excluded.name,
+            gender = excluded.gender,
+            age = excluded.age,
+            city = excluded.city,
+            job = excluded.job,
+            wechat = excluded.wechat,
+            phone = excluded.phone,
+            email = excluded.email,
+            vip = excluded.vip,
+            referral_matchmaker_id = excluded.referral_matchmaker_id,
+            password_hash = excluded.password_hash,
+            account_status = excluded.account_status,
+            registered_at = excluded.registered_at,
+            real_name_verified = excluded.real_name_verified,
+            raw = excluded.raw,
+            updated_at = now()
         `,
         [
           user.id,
@@ -519,6 +547,7 @@ async function syncNormalizedState(data, existingClient = null) {
       );
     }
 
+    // 4. UPSERT match_requests
     for (const request of data.requests || []) {
       await client.query(
         `
@@ -526,6 +555,14 @@ async function syncNormalizedState(data, existingClient = null) {
             id, from_user_id, to_user_id, matchmaker_id, status, created_at, raw
           )
           values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+          on conflict (id) do update set
+            from_user_id = excluded.from_user_id,
+            to_user_id = excluded.to_user_id,
+            matchmaker_id = excluded.matchmaker_id,
+            status = excluded.status,
+            created_at = excluded.created_at,
+            raw = excluded.raw,
+            updated_at = now()
         `,
         [
           request.id,
@@ -539,11 +576,18 @@ async function syncNormalizedState(data, existingClient = null) {
       );
     }
 
+    // 5. UPSERT deals
     for (const deal of data.deals || []) {
       await client.query(
         `
           insert into deals (id, request_id, amount, created_at, raw)
           values ($1, $2, $3, $4, $5::jsonb)
+          on conflict (id) do update set
+            request_id = excluded.request_id,
+            amount = excluded.amount,
+            created_at = excluded.created_at,
+            raw = excluded.raw,
+            updated_at = now()
         `,
         [
           deal.id,
@@ -555,11 +599,19 @@ async function syncNormalizedState(data, existingClient = null) {
       );
     }
 
+    // 6. UPSERT promo_codes
     for (const promoCode of data.promoCodes || []) {
       await client.query(
         `
           insert into promo_codes (code, matchmaker_id, used, used_by, infinite, raw)
           values ($1, $2, $3, $4, $5, $6::jsonb)
+          on conflict (code) do update set
+            matchmaker_id = excluded.matchmaker_id,
+            used = excluded.used,
+            used_by = excluded.used_by,
+            infinite = excluded.infinite,
+            raw = excluded.raw,
+            updated_at = now()
         `,
         [
           promoCode.code,
@@ -572,10 +624,14 @@ async function syncNormalizedState(data, existingClient = null) {
       );
     }
 
+    // 7. UPSERT app_settings
     await client.query(
       `
         insert into app_settings (id, data)
         values ('runtime', $1::jsonb)
+        on conflict (id) do update set
+          data = excluded.data,
+          updated_at = now()
       `,
       [
         JSON.stringify({
@@ -586,6 +642,25 @@ async function syncNormalizedState(data, existingClient = null) {
         }),
       ],
     );
+
+    // 8. DELETE missing rows (in reverse dependency order to prevent FK violations)
+    const dealIds = (data.deals || []).map(d => d.id);
+    await client.query("delete from deals where id not in (select unnest($1::text[]))", [dealIds]);
+
+    const requestIds = (data.requests || []).map(r => r.id);
+    await client.query("delete from match_requests where id not in (select unnest($1::text[]))", [requestIds]);
+
+    const userIds = (data.users || []).map(u => u.id);
+    await client.query("delete from users where id not in (select unnest($1::text[]))", [userIds]);
+
+    const matchmakerIds = (data.matchmakers || []).map(m => m.id);
+    await client.query("delete from matchmakers where id not in (select unnest($1::text[]))", [matchmakerIds]);
+
+    const agencyIds = (data.agencies || []).map(a => a.id);
+    await client.query("delete from agencies where id not in (select unnest($1::text[]))", [agencyIds]);
+
+    const promoCodes = (data.promoCodes || []).map(p => p.code);
+    await client.query("delete from promo_codes where code not in (select unnest($1::text[]))", [promoCodes]);
 
     if (ownsClient) {
       await client.query("commit");
@@ -788,6 +863,309 @@ app.put("/api/state", requireAuth(["admin", "client", "matchmaker"]), async (req
 app.post("/api/reset", requireAuth(["admin"]), async (_request, response) => {
   await writeState(seedState);
   response.json(publicState(await readState()));
+});
+
+// ==========================================
+// 精细化业务 REST API
+// ==========================================
+
+// 1. 客户：修改个人资料
+app.patch("/api/client/profile", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const { name, gender, age, city, job, wechat, bio, requirements } = request.body || {};
+  
+  const userRes = await pool.query("select raw from users where id = $1", [userId]);
+  if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
+  
+  const user = userRes.rows[0].raw;
+  user.name = name !== undefined ? name.trim() : user.name;
+  user.gender = gender !== undefined ? gender : user.gender;
+  user.age = Number.isFinite(Number(age)) ? Number(age) : user.age;
+  user.city = city !== undefined ? city.trim() : user.city;
+  user.job = job !== undefined ? job.trim() : user.job;
+  user.wechat = wechat !== undefined ? wechat.trim() : user.wechat;
+  user.bio = bio !== undefined ? bio.trim() : user.bio;
+  user.requirements = requirements !== undefined ? requirements.trim() : user.requirements;
+  
+  await pool.query(
+    `update users set name = $1, gender = $2, age = $3, city = $4, job = $5, wechat = $6, raw = $7, updated_at = now() where id = $8`,
+    [user.name, user.gender, user.age, user.city, user.job, user.wechat, JSON.stringify(user), userId]
+  );
+  response.json({ user, state: publicState(await readState()) });
+});
+
+// 2. 客户：提交实名认证
+app.post("/api/client/real-name", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const { realName, idCard, phone } = request.body || {};
+  if (!realName || !idCard) return response.status(400).json({ error: "name_and_idcard_required" });
+
+  const userRes = await pool.query("select raw from users where id = $1", [userId]);
+  if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
+  
+  const user = userRes.rows[0].raw;
+  user.realName = realName.trim();
+  user.idCard = idCard.trim();
+  user.realNameVerified = true;
+  if (phone) {
+    user.phone = phone.trim();
+  }
+  
+  await pool.query(
+    `update users set phone = $1, real_name_verified = true, raw = $2, updated_at = now() where id = $3`,
+    [user.phone || null, JSON.stringify(user), userId]
+  );
+  response.json({ user, state: publicState(await readState()) });
+});
+
+// 3. 客户：卡密兑换/付费 VIP
+app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const { code, referralCode } = request.body || {};
+  const client = await pool.connect();
+  
+  try {
+    await client.query("begin");
+    
+    const userRes = await client.query("select raw from users where id = $1", [userId]);
+    if (userRes.rows.length === 0) {
+      await client.query("rollback");
+      return response.status(404).json({ error: "user_not_found" });
+    }
+    const user = userRes.rows[0].raw;
+
+    let matchmakerId = null;
+
+    if (code) {
+      // 兑换码核销
+      const promoRes = await client.query("select raw from promo_codes where upper(code) = upper($1)", [code.trim()]);
+      if (promoRes.rows.length === 0) {
+        await client.query("rollback");
+        return response.status(404).json({ error: "invalid_code" });
+      }
+      const promo = promoRes.rows[0].raw;
+      if (promo.used && !promo.infinite) {
+        await client.query("rollback");
+        return response.status(400).json({ error: "code_already_used" });
+      }
+
+      if (!promo.infinite) {
+        promo.used = true;
+        promo.usedBy = userId;
+        await client.query(
+          "update promo_codes set used = true, used_by = $1, raw = $2, updated_at = now() where upper(code) = upper($3)",
+          [userId, JSON.stringify(promo), code.trim()]
+        );
+      }
+      if (promo.matchmakerId) {
+        matchmakerId = promo.matchmakerId;
+      }
+    } else if (referralCode) {
+      // 推荐码支付
+      const mmRes = await client.query("select id from matchmakers where upper(code) = upper($1)", [referralCode.trim()]);
+      if (mmRes.rows.length === 0) {
+        await client.query("rollback");
+        return response.status(404).json({ error: "invalid_referral_code" });
+      }
+      matchmakerId = mmRes.rows[0].id;
+    } else {
+      await client.query("rollback");
+      return response.status(400).json({ error: "code_or_referral_code_required" });
+    }
+
+    // 升级 VIP
+    user.vip = true;
+    user.vipExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (matchmakerId) {
+      user.referralMatchmakerId = matchmakerId;
+    }
+    await client.query(
+      "update users set vip = true, referral_matchmaker_id = $1, raw = $2, updated_at = now() where id = $3",
+      [user.referralMatchmakerId, JSON.stringify(user), userId]
+    );
+
+    // 写入流水
+    const dealId = `d${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+    const deal = {
+      id: dealId,
+      requestId: null,
+      amount: 399,
+      createdAt: new Date().toISOString().slice(0, 10)
+    };
+    await client.query(
+      "insert into deals (id, request_id, amount, created_at, raw) values ($1, $2, $3, $4, $5::jsonb)",
+      [dealId, null, 399, deal.createdAt, JSON.stringify(deal)]
+    );
+
+    await client.query("commit");
+    response.json({ user, state: publicState(await readState()) });
+  } catch (err) {
+    await client.query("rollback");
+    console.error(err);
+    response.status(500).json({ error: "internal_server_error" });
+  } finally {
+    client.release();
+  }
+});
+
+// 4. 客户：申请牵线
+app.post("/api/client/match-requests", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const { targetUserId } = request.body || {};
+  if (!targetUserId) return response.status(400).json({ error: "target_user_required" });
+
+  const fromUserRes = await pool.query("select raw from users where id = $1", [userId]);
+  if (fromUserRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
+  const fromUser = fromUserRes.rows[0].raw;
+  if (!fromUser.vip) return response.status(403).json({ error: "vip_required" });
+
+  const toUserRes = await pool.query("select raw from users where id = $1", [targetUserId]);
+  if (toUserRes.rows.length === 0) return response.status(404).json({ error: "target_not_found" });
+  const toUser = toUserRes.rows[0].raw;
+
+  const duplicateRes = await pool.query(
+    "select 1 from match_requests where from_user_id = $1 and to_user_id = $2 and status != '已完成'",
+    [userId, targetUserId]
+  );
+  if (duplicateRes.rows.length > 0) return response.status(409).json({ error: "request_pending" });
+
+  const reqId = `r${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+  const matchmakerId = fromUser.referralMatchmakerId || toUser.referralMatchmakerId || null;
+  const matchReq = {
+    id: reqId,
+    fromUserId: userId,
+    toUserId: targetUserId,
+    matchmakerId,
+    status: "待红娘联系",
+    createdAt: new Date().toISOString()
+  };
+
+  await pool.query(
+    `insert into match_requests (id, from_user_id, to_user_id, matchmaker_id, status, created_at, raw)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [reqId, userId, targetUserId, matchmakerId, matchReq.status, matchReq.createdAt, JSON.stringify(matchReq)]
+  );
+
+  response.status(201).json({ request: matchReq, state: publicState(await readState()) });
+});
+
+// 5. 红娘：标记已联系双方
+app.patch("/api/matchmaker/requests/:id/contacted", requireAuth(["matchmaker"]), async (request, response) => {
+  const requestId = request.params.id;
+  const matchmakerId = request.user.sub;
+
+  const reqRes = await pool.query("select raw from match_requests where id = $1", [requestId]);
+  if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
+  const req = reqRes.rows[0].raw;
+
+  if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
+
+  req.status = "已联系双方";
+  await pool.query(
+    "update match_requests set status = '已联系双方', raw = $1, updated_at = now() where id = $2",
+    [JSON.stringify(req), requestId]
+  );
+  response.json({ request: req, state: publicState(await readState()) });
+});
+
+// 6. 管理员：添加机构
+app.post("/api/admin/agencies", requireAuth(["admin"]), async (request, response) => {
+  const { name, city } = request.body || {};
+  if (!name || !city) return response.status(400).json({ error: "name_and_city_required" });
+
+  const agencyId = `a${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+  const agency = { id: agencyId, name: name.trim(), city: city.trim() };
+  
+  await pool.query(
+    "insert into agencies (id, name, city, raw) values ($1, $2, $3, $4::jsonb)",
+    [agencyId, agency.name, agency.city, JSON.stringify(agency)]
+  );
+  response.status(201).json({ agency, state: publicState(await readState()) });
+});
+
+// 7. 管理员：添加红娘
+app.post("/api/admin/matchmakers", requireAuth(["admin"]), async (request, response) => {
+  const { name, agencyId, code } = request.body || {};
+  if (!name || !agencyId || !code) return response.status(400).json({ error: "missing_fields" });
+
+  const codeUpper = code.trim().toUpperCase();
+  const codeCheck = await pool.query("select 1 from matchmakers where upper(code) = $1", [codeUpper]);
+  if (codeCheck.rows.length > 0) return response.status(409).json({ error: "code_exists" });
+
+  const mmId = `m${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+  const matchmaker = {
+    id: mmId,
+    name: name.trim(),
+    agencyId,
+    code: codeUpper,
+    status: "active",
+    registeredAt: new Date().toISOString()
+  };
+  
+  await pool.query(
+    `insert into matchmakers (id, agency_id, name, code, status, registered_at, raw)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [mmId, agencyId, matchmaker.name, codeUpper, matchmaker.status, matchmaker.registeredAt, JSON.stringify(matchmaker)]
+  );
+  response.status(201).json({ matchmaker, state: publicState(await readState()) });
+});
+
+// 8. 管理员：修改分成比例
+app.patch("/api/admin/splits", requireAuth(["admin"]), async (request, response) => {
+  const { promo, matchmaker, platform } = request.body || {};
+  if (Number(promo) + Number(matchmaker) + Number(platform) !== 100) {
+    return response.status(400).json({ error: "sum_must_be_100" });
+  }
+
+  const settingsRes = await pool.query("select data from app_settings where id = 'runtime'");
+  const settings = settingsRes.rows[0]?.data || {};
+  settings.splits = { promo: Number(promo), matchmaker: Number(matchmaker), platform: Number(platform) };
+
+  await pool.query(
+    "insert into app_settings (id, data, updated_at) values ('runtime', $1::jsonb, now()) on conflict (id) do update set data = excluded.data, updated_at = now()",
+    [JSON.stringify(settings)]
+  );
+  response.json({ splits: settings.splits, state: publicState(await readState()) });
+});
+
+// 9. 管理员：随机生成卡密
+app.post("/api/admin/promo-codes", requireAuth(["admin"]), async (request, response) => {
+  const { code, matchmakerId } = request.body || {};
+  if (!code) return response.status(400).json({ error: "code_required" });
+
+  const codeUpper = code.trim().toUpperCase();
+  const codeCheck = await pool.query("select 1 from promo_codes where upper(code) = $1", [codeUpper]);
+  if (codeCheck.rows.length > 0) return response.status(409).json({ error: "code_exists" });
+
+  const promoCode = {
+    code: codeUpper,
+    matchmakerId: matchmakerId || null,
+    used: false,
+    usedBy: null
+  };
+  
+  await pool.query(
+    "insert into promo_codes (code, matchmaker_id, used, used_by, infinite, raw) values ($1, $2, $3, $4, $5, $6::jsonb)",
+    [promoCode.code, promoCode.matchmakerId, false, null, false, JSON.stringify(promoCode)]
+  );
+  response.status(201).json({ promoCode, state: publicState(await readState()) });
+});
+
+// 10. 管理员：模拟一笔成交记录
+app.post("/api/admin/deals/simulate", requireAuth(["admin"]), async (request, response) => {
+  const dealId = `d${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+  const deal = {
+    id: dealId,
+    requestId: null,
+    amount: 399,
+    createdAt: new Date().toISOString().slice(0, 10)
+  };
+  
+  await pool.query(
+    "insert into deals (id, request_id, amount, created_at, raw) values ($1, $2, $3, $4, $5::jsonb)",
+    [dealId, null, 399, deal.createdAt, JSON.stringify(deal)]
+  );
+  response.status(201).json({ deal, state: publicState(await readState()) });
 });
 
 app.use((error, _request, response, _next) => {
