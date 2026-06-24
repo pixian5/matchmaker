@@ -425,10 +425,10 @@ function publicState(data) {
 function ensureRequestDefaults(request) {
   if (request.memberChatEnabled === undefined) request.memberChatEnabled = false;
   if (request.maleContacted === undefined) {
-    request.maleContacted = request.status === "已联系双方" || request.status === "来和双方对话";
+    request.maleContacted = request.status === "已联系双方" || request.status === "来和双方对话" || request.status === "已联系男方" || request.status === "联系男方";
   }
   if (request.femaleContacted === undefined) {
-    request.femaleContacted = request.status === "已联系双方" || request.status === "来和双方对话";
+    request.femaleContacted = request.status === "已联系双方" || request.status === "来和双方对话" || request.status === "已联系女方" || request.status === "联系女方";
   }
   request.status = getRequestContactStatus(request);
   return request;
