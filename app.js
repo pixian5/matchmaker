@@ -1881,11 +1881,11 @@ function renderMatchmakerDesk() {
         const { maleUser, femaleUser } = getGenderParticipants(request);
         const maleBtn =
           maleUser
-            ? `<button class="secondary-button" data-contact-request="${request.id}" data-contact-side="male" type="button" ${request.maleContacted ? "disabled" : ""}>${request.maleContacted ? "已联系男方" : "联系男方"}</button>`
+            ? `<button class="secondary-button${request.maleContacted ? " contacted" : ""}" data-contact-request="${request.id}" data-contact-side="male" type="button">${request.maleContacted ? "✓ 联系男方" : "联系男方"}</button>`
             : "";
         const femaleBtn =
           femaleUser
-            ? `<button class="secondary-button" data-contact-request="${request.id}" data-contact-side="female" type="button" ${request.femaleContacted ? "disabled" : ""}>${request.femaleContacted ? "已联系女方" : "联系女方"}</button>`
+            ? `<button class="secondary-button${request.femaleContacted ? " contacted" : ""}" data-contact-request="${request.id}" data-contact-side="female" type="button">${request.femaleContacted ? "✓ 联系女方" : "联系女方"}</button>`
             : "";
         const approveBtn =
           request.status === "已联系双方" && !request.memberChatEnabled
@@ -2015,8 +2015,7 @@ async function contactRequestSide(requestId, side) {
       const data = await res.json();
       state = data.state;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      renderAll();
-      showToast("已标记红娘联系进度");
+      showToast(`已标记联系${side === "male" ? "男方" : "女方"}，正在打开聊天…`);
     } catch (err) {
       console.warn("API complete request failed, fallback to local:", err);
       showToast("操作失败：" + err.message);
@@ -2027,8 +2026,7 @@ async function contactRequestSide(requestId, side) {
     if (side === "female") request.femaleContacted = true;
     request.status = getRequestContactStatus(request);
     saveState();
-    renderAll();
-    showToast("已标记红娘联系进度");
+    showToast(`已标记联系${side === "male" ? "男方" : "女方"}，正在打开聊天…`);
   }
 
   const { from, to } = getRequestUsers(request);
@@ -2036,7 +2034,21 @@ async function contactRequestSide(requestId, side) {
   const matchmaker = getMatchmaker(request.matchmakerId);
   const contactedUser = side === "male" ? maleUser : femaleUser;
 
-  logEvent("match", `红娘 '${matchmaker?.name}' 已联系${side === "male" ? "男方" : "女方"}：${contactedUser?.name || "会员"}，当前进度 ${request.status}`);
+  // 自动跳转到该方会员的聊天窗口
+  const contactedUserId = contactedUser?.id;
+  if (contactedUserId) {
+    const thread = state.chatThreads.find(
+      (t) => t.type === "member_matchmaker" && t.requestId === requestId &&
+        (t.participants || []).some((p) => p.role === "client" && p.id === contactedUserId)
+    );
+    if (thread) {
+      activeMatchmakerChatThreadId = thread.id;
+    }
+  }
+
+  renderAll();
+
+  logEvent("match", `红娘 '${matchmaker?.name}' 联系${side === "male" ? "男方" : "女方"}：${contactedUser?.name || "会员"}，当前进度 ${request.status}`);
 
   if (request.status === "已联系双方") {
     showPushNotification("【牵线成功进度通知】", {
