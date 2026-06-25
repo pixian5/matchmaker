@@ -246,7 +246,7 @@ function ensureStateDefaults(s) {
     if (request.maleContacted === undefined) request.maleContacted = request.status === "已联系双方" || request.status === "来和双方对话" || request.status === "已联系男方" || request.status === "联系男方";
     if (request.femaleContacted === undefined) request.femaleContacted = request.status === "已联系双方" || request.status === "来和双方对话" || request.status === "已联系女方" || request.status === "联系女方";
     request.status = getRequestContactStatus(request);
-    if (request.memberChatEnabled === undefined) request.memberChatEnabled = false;
+    request.memberChatEnabled = true;
     return request;
   });
   s.chatThreads = s.chatThreads.map((thread) => {
@@ -255,7 +255,7 @@ function ensureStateDefaults(s) {
     return thread;
   });
 
-  // Ensure all 3 matchmaker threads exist for each request
+  // Ensure 1v1 matchmaker threads exist for each request
   (s.requests || []).forEach((request) => {
     if (request.matchmakerId) {
       const fromUser = s.users.find((u) => u.id === request.fromUserId);
@@ -265,8 +265,13 @@ function ensureStateDefaults(s) {
         const maleUser = users.find((item) => item.gender === "男") || fromUser;
         const femaleUser = users.find((item) => item.gender === "女") || toUser;
         
-        // Check male 2-way
-        let maleThread = s.chatThreads.find((t) => t.requestId === request.id && (t.participants || []).length === 2 && t.participants.some(p => p.id === maleUser.id));
+        let maleThread = s.chatThreads.find(
+          (t) =>
+            t.requestId === request.id &&
+            t.type === "member_matchmaker" &&
+            (t.participants || []).length === 2 &&
+            t.participants.some((p) => p.role === "client" && p.id === maleUser.id)
+        );
         if (!maleThread) {
           maleThread = {
             id: `ct_gen_${request.id}_male`,
@@ -284,8 +289,13 @@ function ensureStateDefaults(s) {
           s.chatThreads.push(maleThread);
         }
         
-        // Check female 2-way
-        let femaleThread = s.chatThreads.find((t) => t.requestId === request.id && (t.participants || []).length === 2 && t.participants.some(p => p.id === femaleUser.id));
+        let femaleThread = s.chatThreads.find(
+          (t) =>
+            t.requestId === request.id &&
+            t.type === "member_matchmaker" &&
+            (t.participants || []).length === 2 &&
+            t.participants.some((p) => p.role === "client" && p.id === femaleUser.id)
+        );
         if (!femaleThread) {
           femaleThread = {
             id: `ct_gen_${request.id}_female`,
@@ -302,27 +312,22 @@ function ensureStateDefaults(s) {
           };
           s.chatThreads.push(femaleThread);
         }
-        
-        // Check 3-way
-        let bothThread = s.chatThreads.find((t) => t.requestId === request.id && (t.participants || []).length === 3);
-        if (!bothThread) {
-          bothThread = {
-            id: `ct_gen_${request.id}_both`,
-            type: "member_matchmaker",
-            requestId: request.id,
-            status: "active",
-            participants: [
-              { role: "matchmaker", id: request.matchmakerId },
-              { role: "client", id: maleUser.id },
-              { role: "client", id: femaleUser.id }
-            ],
-            createdAt: request.createdAt || new Date().toISOString(),
-            lastMessageAt: null,
-            lastMessagePreview: "",
-          };
-          s.chatThreads.push(bothThread);
-        }
       }
+    }
+    if (request.memberChatEnabled && !s.chatThreads.some((t) => t.type === "member_member" && t.requestId === request.id)) {
+      s.chatThreads.push({
+        id: `ct_gen_${request.id}_member`,
+        type: "member_member",
+        requestId: request.id,
+        status: "active",
+        participants: [
+          { role: "client", id: request.fromUserId },
+          { role: "client", id: request.toUserId }
+        ],
+        createdAt: request.createdAt || new Date().toISOString(),
+        lastMessageAt: null,
+        lastMessagePreview: "",
+      });
     }
   });
   return s;
@@ -739,6 +744,32 @@ function getThreadById(id) {
   return state.chatThreads.find((thread) => thread.id === id);
 }
 
+function getMatchmakerThreadForRequest(requestId, clientId) {
+  const exact = state.chatThreads.find(
+    (thread) =>
+      thread.type === "member_matchmaker" &&
+      thread.requestId === requestId &&
+      (thread.participants || []).length === 2 &&
+      threadHasParticipant(thread, "client", clientId),
+  );
+  if (exact) return exact;
+  return state.chatThreads.find(
+    (thread) =>
+      thread.type === "member_matchmaker" &&
+      thread.requestId === requestId &&
+      threadHasParticipant(thread, "client", clientId),
+  ) || null;
+}
+
+function getMatchmakerThreadsForRequest(requestId, matchmakerId) {
+  return state.chatThreads.filter(
+    (thread) =>
+      thread.type === "member_matchmaker" &&
+      thread.requestId === requestId &&
+      threadHasParticipant(thread, "matchmaker", matchmakerId),
+  );
+}
+
 function getThreadMessages(threadId) {
   return state.chatMessages
     .filter((message) => message.threadId === threadId)
@@ -755,26 +786,16 @@ function getOtherParticipant(thread, role, id) {
 
 function getThreadDisplayName(thread, viewerRole, viewerId) {
   if (thread.type === "member_matchmaker" && viewerRole === "client") {
-    const clients = (thread.participants || []).filter((p) => p.role === "client");
-    const otherClientParticipant = clients.find((p) => p.id !== viewerId);
-    const otherClient = otherClientParticipant ? state.users.find((u) => u.id === otherClientParticipant.id) : null;
     const matchmakerParticipant = (thread.participants || []).find((participant) => participant.role === "matchmaker");
     const mm = matchmakerParticipant ? getMatchmaker(matchmakerParticipant.id) : null;
-    const mmName = mm ? `红娘 ${mm.name}` : "专属红娘";
-    if (clients.length > 1 && otherClient) {
-      return `${mmName} (与 ${otherClient.name} 三方会话)`;
-    }
-    return mmName;
+    return mm ? `红娘 ${mm.name}` : "专属红娘";
   }
   if (thread.type === "member_matchmaker" && viewerRole === "matchmaker") {
-    const clients = (thread.participants || []).filter((participant) => participant.role === "client");
-    const clientNames = clients
-      .map((participant) => state.users.find((item) => item.id === participant.id)?.name)
-      .filter(Boolean);
-    if (clients.length === 1) {
-      return clientNames.length ? `${clientNames[0]} (双人私聊)` : "会员会话";
-    }
-    return clientNames.length ? `${clientNames.join(" / ")} (三方对话)` : "会员会话";
+    const client = (thread.participants || [])
+      .filter((participant) => participant.role === "client")
+      .map((participant) => state.users.find((item) => item.id === participant.id))
+      .find(Boolean);
+    return client ? `${client.name} (一对一沟通)` : "会员会话";
   }
   const other = getOtherParticipant(thread, viewerRole, viewerId);
   if (!other) {
@@ -798,12 +819,9 @@ function getThreadSubtitle(thread) {
     return `互聊已开启 · ${from?.name || "会员"} 与 ${to?.name || "会员"}`;
   }
   const clients = (thread.participants || []).filter((p) => p.role === "client");
-  if (clients.length > 1) {
-    return `三方通话 · ${from?.name || "会员"} 与 ${to?.name || "会员"}`;
-  }
   const clientParticipant = clients[0];
   const client = clientParticipant ? state.users.find((u) => u.id === clientParticipant.id) : null;
-  return `双人私聊 · 与红娘的沟通 (${client?.name || "会员"})`;
+  return `一对一沟通 · 与红娘的聊天 (${client?.name || "会员"})`;
 }
 
 function getMessageSenderName(message) {
@@ -851,23 +869,7 @@ function createLocalThread(type, request) {
     };
     state.chatThreads.unshift(femaleThread);
 
-    const bothThread = {
-      id: `${baseId}_both`,
-      type: "member_matchmaker",
-      requestId: request.id,
-      status: "active",
-      participants: [
-        { role: "matchmaker", id: request.matchmakerId },
-        { role: "client", id: maleUser.id },
-        { role: "client", id: femaleUser.id }
-      ],
-      createdAt: new Date().toISOString(),
-      lastMessageAt: null,
-      lastMessagePreview: "",
-    };
-    state.chatThreads.unshift(bothThread);
-
-    return bothThread;
+    return maleThread;
   } else {
     const participants = [
       { role: "client", id: request.fromUserId },
@@ -1225,7 +1227,7 @@ function renderMineTabContent() {
 
     // 动态渲染客户数据指标面板
     const userReqs = state.requests.filter(r => r.fromUserId === user.id);
-    const unlockedReqs = userReqs.filter(r => r.status === "来和双方对话");
+    const unlockedReqs = userReqs.filter(r => r.memberChatEnabled);
     const referralMm = user.referralMatchmakerId ? getMatchmaker(user.referralMatchmakerId) : null;
 
     $("#mineStatRequests").textContent = userReqs.length;
@@ -1506,13 +1508,14 @@ async function createRequest(targetUserId, matchmakerId) {
       status: "待红娘联系",
       maleContacted: false,
       femaleContacted: false,
-      memberChatEnabled: false,
+      memberChatEnabled: true,
       createdAt: new Date().toISOString(),
     };
     state.requests.unshift(newRequest);
     if (matchmakerId) {
       createLocalThread("member_matchmaker", newRequest);
     }
+    createLocalThread("member_member", newRequest);
     saveState();
     renderAll();
     showToast(`已通知红娘为你和${target.name}牵线`);
@@ -1555,10 +1558,7 @@ function renderRequests() {
         const matchmaker = getMatchmaker(request.matchmakerId);
         const otherUser = request.fromUserId === user.id ? to : from;
         const unlockedWechat = request.status === "来和双方对话" ? `<div class="muted">对方微信：${otherUser?.wechat || "待同步"}</div>` : "";
-        const memberChatStatus =
-          request.memberChatEnabled
-            ? `<div class="muted">会员互聊：已开启</div>`
-            : `<div class="muted">会员互聊：等待红娘确认</div>`;
+        const memberChatStatus = `<div class="muted">会员互聊：已开启</div>`;
         return `
           <article class="request-card">
             <span class="status-pill">${request.status}</span>
@@ -1589,15 +1589,8 @@ function renderMiniChatSections(user, requests) {
   const input = $("#miniChatInput");
   if (!threadList || !mutualList || !panel || !panelTitle || !panelMeta || !messagesEl || !emptyEl || !input) return;
 
-  const accessibleThreads = state.chatThreads.filter((thread) => {
-    if (!threadHasParticipant(thread, "client", user.id)) return false;
-    if (thread.type === "member_matchmaker" && (thread.participants || []).length === 3) {
-      const req = state.requests.find((r) => r.id === thread.requestId);
-      if (!req || req.status !== "来和双方对话") return false;
-    }
-    return true;
-  });
-  const mmThreads = accessibleThreads.filter((thread) => thread.type === "member_matchmaker");
+  const accessibleThreads = state.chatThreads.filter((thread) => threadHasParticipant(thread, "client", user.id));
+  const mmThreads = accessibleThreads.filter((thread) => thread.type === "member_matchmaker" && (thread.participants || []).length === 2);
   const memberThreads = accessibleThreads.filter((thread) => thread.type === "member_member");
 
   if (!activeMiniChatThreadId || !accessibleThreads.some((thread) => thread.id === activeMiniChatThreadId)) {
@@ -1632,12 +1625,12 @@ function renderMiniChatSections(user, requests) {
           return `
             <div class="request-card muted">
               <strong>${otherUser?.name || "会员"}</strong>
-              <div>${request.memberChatEnabled ? "聊天线程生成中，请稍候刷新。" : "红娘确认双方意向后，才能开启会员互聊。"}</div>
+              <div>聊天线程生成中，请稍候刷新。</div>
             </div>
           `;
         }
         const active = thread.id === activeMiniChatThreadId ? " active" : "";
-        const preview = thread.lastMessagePreview || "红娘已同意，你们现在可以直接聊天了。";
+        const preview = thread.lastMessagePreview || "你们现在可以直接聊天了。";
         return `
           <button class="chat-thread-card${active}" type="button" data-open-thread="${thread.id}">
             <strong>${getThreadDisplayName(thread, "client", user.id)}</strong>
@@ -2061,12 +2054,7 @@ function renderMatchmakerDesk() {
           request.status === "来和双方对话"
             ? `<button class="primary-button" data-talk-both="${request.id}" type="button" style="width: auto;">来和双方对话</button>`
             : "";
-        const approveBtn =
-          request.status === "来和双方对话" && !request.memberChatEnabled
-            ? `<button class="ghost-button" data-approve-chat="${request.id}" type="button" style="margin-top:8px;">同意会员互聊</button>`
-            : "";
-        const approvedTag =
-          request.memberChatEnabled ? `<div class="muted">会员互聊：已开启</div>` : "";
+        const approvedTag = `<div class="muted">会员互聊：已开启</div>`;
         return `
           <article class="request-card">
             <span class="status-pill">${request.status}</span>
@@ -2078,7 +2066,6 @@ function renderMatchmakerDesk() {
               ${femaleBtn}
               ${talkBothBtn}
             </div>
-            ${approveBtn}
             ${approvedTag}
           </article>
         `;
@@ -2113,14 +2100,12 @@ function renderMatchmakerChats(matchmakerId) {
   const input = $("#matchmakerChatInput");
   if (!list || !panel || !title || !meta || !messagesEl || !emptyEl || !input) return;
 
-  const threads = state.chatThreads.filter((thread) => {
-    if (thread.type !== "member_matchmaker" || !threadHasParticipant(thread, "matchmaker", matchmakerId)) return false;
-    if ((thread.participants || []).length === 3) {
-      const req = state.requests.find((r) => r.id === thread.requestId);
-      if (!req || req.status !== "来和双方对话") return false;
-    }
-    return true;
-  });
+  const threads = state.chatThreads.filter(
+    (thread) =>
+      thread.type === "member_matchmaker" &&
+      (thread.participants || []).length === 2 &&
+      threadHasParticipant(thread, "matchmaker", matchmakerId),
+  );
   if (!activeMatchmakerChatThreadId || !threads.some((thread) => thread.id === activeMatchmakerChatThreadId)) {
     activeMatchmakerChatThreadId = threads[0]?.id || null;
   }
@@ -2184,16 +2169,18 @@ async function completeRequest(requestId) {
 }
 
 function openThreeWayChat(requestId) {
-  const thread = state.chatThreads.find(
-    (t) => t.type === "member_matchmaker" && t.requestId === requestId &&
-      (t.participants || []).length === 3
-  );
+  const request = getRequestById(requestId);
+  const { maleUser, femaleUser } = request ? getGenderParticipants(request) : { maleUser: null, femaleUser: null };
+  const thread =
+    (maleUser && getMatchmakerThreadForRequest(requestId, maleUser.id)) ||
+    (femaleUser && getMatchmakerThreadForRequest(requestId, femaleUser.id)) ||
+    null;
   if (thread) {
     activeMatchmakerChatThreadId = thread.id;
     matchmakerChatModalOpen = true;
-    showToast("已打开三方对话");
+    showToast("已打开双方会话");
   } else {
-    showToast("未找到三方对话，请刷新页面");
+    showToast("未找到会话，请刷新页面");
   }
   renderAll();
 }
@@ -2231,9 +2218,10 @@ async function contactRequestSide(requestId, side) {
     showToast(`已标记联系${side === "male" ? "男方" : "女方"}，正在打开聊天…`);
   }
 
-  const { from, to } = getRequestUsers(request);
-  const { maleUser, femaleUser } = getGenderParticipants(request);
-  const matchmaker = getMatchmaker(request.matchmakerId);
+  const updatedRequest = getRequestById(requestId) || request;
+  const { from, to } = getRequestUsers(updatedRequest);
+  const { maleUser, femaleUser } = getGenderParticipants(updatedRequest);
+  const matchmaker = getMatchmaker(updatedRequest.matchmakerId);
   const contactedUser = side === "male" ? maleUser : femaleUser;
 
   // 自动跳转到该方会员的聊天窗口
@@ -2258,9 +2246,9 @@ async function contactRequestSide(requestId, side) {
 
   renderAll();
 
-  logEvent("match", `红娘 '${matchmaker?.name}' 联系${side === "male" ? "男方" : "女方"}：${contactedUser?.name || "会员"}，当前进度 ${request.status}`);
+  logEvent("match", `红娘 '${matchmaker?.name}' 联系${side === "male" ? "男方" : "女方"}：${contactedUser?.name || "会员"}，当前进度 ${updatedRequest.status}`);
 
-  if (request.status === "来和双方对话") {
+  if (updatedRequest.status === "来和双方对话") {
     showPushNotification("【牵线成功进度通知】", {
       "牵线红娘": matchmaker?.name || "专属红娘",
       "心仪嘉宾": to.name,
@@ -2268,49 +2256,6 @@ async function contactRequestSide(requestId, side) {
       "温馨提示": "红娘已确认双方信息，请复制微信号添加好友并备注“缘定传媒人”。"
     });
   }
-}
-
-async function approveMemberChat(requestId) {
-  const request = getRequestById(requestId);
-  if (!request) return;
-
-  if (apiAvailable) {
-    try {
-      const res = await fetch(`${API_BASE}/matchmaker/requests/${requestId}/approve-member-chat`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders() }
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "failed");
-      }
-      const data = await res.json();
-      state = data.state;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      renderAll();
-      showToast("已同意双方会员直接聊天");
-    } catch (err) {
-      console.warn("API approve member chat failed, fallback to local:", err);
-      showToast("操作失败：" + err.message);
-      return;
-    }
-  } else {
-    request.memberChatEnabled = true;
-    const existing = state.chatThreads.find((thread) => thread.type === "member_member" && thread.requestId === requestId);
-    if (!existing) createLocalThread("member_member", request);
-    saveState();
-    renderAll();
-    showToast("已同意双方会员直接聊天");
-  }
-
-  const from = state.users.find((item) => item.id === request.fromUserId);
-  const to = state.users.find((item) => item.id === request.toUserId);
-  logEvent("match", `红娘已同意会员互聊：${from?.name || "会员"} 与 ${to?.name || "会员"}`);
-  showPushNotification("【会员互聊已开启】", {
-    "牵线双方": `${from?.name || "会员"} / ${to?.name || "会员"}`,
-    "当前状态": "双方可在会员端直接聊天",
-    "红娘协助": "红娘仍可继续跟进进度"
-  });
 }
 
 async function sendMiniChatMessage(event) {
@@ -3287,11 +3232,7 @@ function bindEvents() {
       }
       navigate("/mini/requests");
       setTimeout(() => {
-        const thread = state.chatThreads.find(
-          (t) => t.type === "member_matchmaker" && t.requestId === requestId &&
-            (t.participants || []).length === 2 &&
-            (t.participants || []).some((p) => p.role === "client" && p.id === user.id)
-        );
+        const thread = getMatchmakerThreadForRequest(requestId, user.id);
         if (thread) {
           activeMiniChatThreadId = thread.id;
           renderAll();
@@ -3344,10 +3285,6 @@ function bindEvents() {
       openThreeWayChat(talkBothButton.dataset.talkBoth);
       return;
     }
-    const approveButton = event.target.closest("[data-approve-chat]");
-    if (approveButton) {
-      approveMemberChat(approveButton.dataset.approveChat);
-    }
   });
 
   safeBind("#requestsContent", "click", (event) => {
@@ -3364,11 +3301,7 @@ function bindEvents() {
     const chatWithMmButton = event.target.closest("[data-chat-with-mm]");
     if (chatWithMmButton) {
       const requestId = chatWithMmButton.dataset.chatWithMm;
-      const thread = state.chatThreads.find(
-        (t) => t.type === "member_matchmaker" && t.requestId === requestId &&
-          (t.participants || []).length === 2 &&
-          (t.participants || []).some((p) => p.role === "client" && p.id === user.id)
-      );
+      const thread = getMatchmakerThreadForRequest(requestId, user.id);
       if (thread) {
         activeMiniChatThreadId = thread.id;
         renderAll();

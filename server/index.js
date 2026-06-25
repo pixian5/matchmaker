@@ -423,7 +423,7 @@ function publicState(data) {
 }
 
 function ensureRequestDefaults(request) {
-  if (request.memberChatEnabled === undefined) request.memberChatEnabled = false;
+  request.memberChatEnabled = true;
   if (request.maleContacted === undefined) {
     request.maleContacted = request.status === "已联系双方" || request.status === "来和双方对话" || request.status === "已联系男方" || request.status === "联系男方";
   }
@@ -497,22 +497,7 @@ function buildMemberMatchmakerThreads(request, fromUser, toUser) {
     lastMessagePreview: "",
   });
 
-  const bothThread = ensureThreadDefaults({
-    id: `${baseId}_both`,
-    type: "member_matchmaker",
-    requestId: request.id,
-    status: "active",
-    participants: [
-      { role: "matchmaker", id: request.matchmakerId },
-      { role: "client", id: maleUser.id },
-      { role: "client", id: femaleUser.id }
-    ],
-    createdAt: new Date().toISOString(),
-    lastMessageAt: null,
-    lastMessagePreview: "",
-  });
-
-  return [maleThread, femaleThread, bothThread];
+  return [maleThread, femaleThread];
 }
 
 function buildMemberMemberThread(request) {
@@ -571,7 +556,13 @@ async function readState() {
         const femaleUser = users.find((item) => item.gender === "女") || toUser;
         
         // Check male 2-way
-        let maleThread = allThreads.find(t => t.requestId === request.id && t.participants.length === 2 && t.participants.some(p => p.id === maleUser.id));
+        let maleThread = allThreads.find(
+          (t) =>
+            t.requestId === request.id &&
+            t.type === "member_matchmaker" &&
+            t.participants.length === 2 &&
+            t.participants.some((p) => p.id === maleUser.id),
+        );
         if (!maleThread) {
           maleThread = {
             id: `ct_gen_${request.id}_male`,
@@ -596,7 +587,13 @@ async function readState() {
         }
         
         // Check female 2-way
-        let femaleThread = allThreads.find(t => t.requestId === request.id && t.participants.length === 2 && t.participants.some(p => p.id === femaleUser.id));
+        let femaleThread = allThreads.find(
+          (t) =>
+            t.requestId === request.id &&
+            t.type === "member_matchmaker" &&
+            t.participants.length === 2 &&
+            t.participants.some((p) => p.id === femaleUser.id),
+        );
         if (!femaleThread) {
           femaleThread = {
             id: `ct_gen_${request.id}_female`,
@@ -620,31 +617,22 @@ async function readState() {
           allThreads.push(femaleThread);
         }
         
-        // Check 3-way
-        let bothThread = allThreads.find(t => t.requestId === request.id && t.participants.length === 3);
-        if (!bothThread) {
-          bothThread = {
-            id: `ct_gen_${request.id}_both`,
-            type: "member_matchmaker",
-            requestId: request.id,
-            status: "active",
-            participants: [
-              { role: "matchmaker", id: request.matchmakerId },
-              { role: "client", id: maleUser.id },
-              { role: "client", id: femaleUser.id }
-            ],
-            createdAt: request.createdAt || new Date().toISOString(),
-            lastMessageAt: null,
-            lastMessagePreview: "",
-          };
-          await pool.query(
-            `insert into chat_threads (id, type, request_id, status, participants, raw)
-             values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
-             on conflict (id) do nothing`,
-            [bothThread.id, bothThread.type, bothThread.requestId, bothThread.status, JSON.stringify(bothThread.participants), JSON.stringify(bothThread)]
-          );
-          allThreads.push(bothThread);
-        }
+      }
+    }
+
+    if (request.memberChatEnabled) {
+      let memberThread = allThreads.find(
+        (t) => t.requestId === request.id && t.type === "member_member",
+      );
+      if (!memberThread) {
+        memberThread = buildMemberMemberThread(request);
+        await pool.query(
+          `insert into chat_threads (id, type, request_id, status, participants, raw)
+           values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+           on conflict (id) do nothing`,
+          [memberThread.id, memberThread.type, memberThread.requestId, memberThread.status, JSON.stringify(memberThread.participants), JSON.stringify(memberThread)]
+        );
+        allThreads.push(memberThread);
       }
     }
   }
@@ -1348,7 +1336,7 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     status: "待红娘联系",
     maleContacted: false,
     femaleContacted: false,
-    memberChatEnabled: false,
+    memberChatEnabled: true,
     createdAt: new Date().toISOString()
   };
 
@@ -1366,6 +1354,13 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
       [thread.id, thread.type, thread.requestId, thread.status, JSON.stringify(thread.participants), JSON.stringify(thread)]
     );
   }
+
+  const memberThread = buildMemberMemberThread(matchReq);
+  await pool.query(
+    `insert into chat_threads (id, type, request_id, status, participants, raw)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
+    [memberThread.id, memberThread.type, memberThread.requestId, memberThread.status, JSON.stringify(memberThread.participants), JSON.stringify(memberThread)]
+  );
 
   response.status(201).json({ request: matchReq, state: publicState(await readState()) });
 });
@@ -1403,8 +1398,6 @@ app.patch("/api/matchmaker/requests/:id/approve-member-chat", requireAuth(["matc
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
-  if (req.status !== "来和双方对话") return response.status(400).json({ error: "contact_first_required" });
-
   req.memberChatEnabled = true;
   await pool.query(
     "update match_requests set raw = $1, updated_at = now() where id = $2",
