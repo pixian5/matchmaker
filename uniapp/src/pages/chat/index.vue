@@ -7,10 +7,10 @@
     
     <view class="list-container" v-else>
       <view class="chat-item" v-for="item in list" :key="item.id" @click="goToChat(item.id)">
-        <image class="avatar" src="/static/default-avatar.png" mode="aspectFill" />
+        <image class="avatar" :src="item.otherUser?.photo || '/static/default-avatar.png'" mode="aspectFill" />
         <view class="info">
           <view class="header">
-            <text class="name">聊天记录</text>
+            <text class="name">{{ item.otherUser?.name || '聊天' }}</text>
             <text class="time">{{ formatDate(item.lastMessageAt || item.createdAt) }}</text>
           </view>
           <text class="preview">{{ item.lastMessagePreview || '暂无消息' }}</text>
@@ -40,7 +40,7 @@ const loadData = async () => {
   loading.value = true;
   try {
     const res = await getChatThreadsApi();
-    list.value = res.data || [];
+    list.value = res.data?.list || [];
   } catch (error) {
     //
   } finally {

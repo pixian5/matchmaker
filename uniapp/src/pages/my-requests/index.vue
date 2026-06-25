@@ -2,10 +2,10 @@
   <view class="requests-container">
     <view class="list-container">
       <view class="request-card" v-for="item in list" :key="item.id">
-        <image class="avatar" :src="item.toUserPhoto || '/static/default-avatar.png'" mode="aspectFill" />
+        <image class="avatar" :src="item.toUser?.photo || '/static/default-avatar.png'" mode="aspectFill" />
         <view class="info">
           <view class="header">
-            <text class="name">申请牵线：{{ item.toUserName }}</text>
+            <text class="name">申请牵线：{{ item.toUser?.name || '未知' }}</text>
             <view class="status-badge" :class="getStatusClass(item.status)">
               {{ getStatusText(item.status) }}
             </view>
@@ -34,7 +34,7 @@ const loadData = async () => {
   loading.value = true;
   try {
     const res = await getMatchRequestsApi();
-    list.value = res.data || [];
+    list.value = res.data?.list || [];
   } catch (error) {
     //
   } finally {
@@ -46,18 +46,23 @@ onShow(() => {
   loadData();
 });
 
+const pendingStatuses = ['pending', '待红娘联系'];
+const activeStatuses = ['contacted', '联系男方', '联系女方', '已联系男方', '已联系女方', '已联系双方', '来和双方对话'];
+const doneStatuses = ['completed', 'rejected', '已完成', '已拒绝'];
+
 const getStatusClass = (status) => {
-  if (status === 'pending') return 'status-pending';
-  if (status === 'contacted') return 'status-active';
-  if (status === 'completed' || status === 'rejected') return 'status-done';
+  if (pendingStatuses.includes(status)) return 'status-pending';
+  if (activeStatuses.includes(status)) return 'status-active';
+  if (doneStatuses.includes(status)) return 'status-done';
   return 'status-pending';
 };
 
 const getStatusText = (status) => {
-  if (status === 'pending') return '待处理';
+  if (pendingStatuses.includes(status)) return '待红娘联系';
   if (status === 'contacted') return '已联系';
-  if (status === 'completed') return '已完成';
-  if (status === 'rejected') return '已拒绝';
+  if (status === 'completed' || status === '已完成') return '已完成';
+  if (status === 'rejected' || status === '已拒绝') return '已拒绝';
+  if (activeStatuses.includes(status)) return status;
   return '待处理';
 };
 

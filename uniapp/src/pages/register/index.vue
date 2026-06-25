@@ -85,7 +85,17 @@ const handleRegister = async () => {
   try {
     // 提交注册数据，去掉 passwordConfirm
     const { passwordConfirm, ...submitData } = form;
-    submitData.phone = submitData.account; // 兼容现有系统
+    // 根据账号格式智能判断是手机号还是邮箱
+    const isPhone = /^\d{11}$/.test(form.account);
+    const isEmail = form.account.includes('@');
+    if (isPhone) {
+      submitData.phone = form.account;
+    } else if (isEmail) {
+      submitData.email = form.account;
+    } else {
+      // 默认当作手机号处理（兼容旧逻辑）
+      submitData.phone = form.account;
+    }
     await registerApi(submitData);
     
     uni.showToast({ title: '注册成功，正在登录...', icon: 'success' });

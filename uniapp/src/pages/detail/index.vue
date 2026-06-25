@@ -64,7 +64,7 @@ onLoad((options) => {
 const loadProfile = async (id) => {
   try {
     const res = await getProfileDetailApi(id);
-    profile.value = res.data || res;
+    profile.value = res.data?.user || res.data || res;
   } catch (error) {
     // handled by interceptor
   } finally {
@@ -98,7 +98,7 @@ const handleMatchRequest = async () => {
       if (res.confirm) {
         requesting.value = true;
         try {
-          await createMatchRequestApi({ toUserId: profile.value.id });
+          await createMatchRequestApi({ targetUserId: profile.value.id });
           uni.showToast({ title: '申请成功', icon: 'success' });
         } catch (error) {
           // handled

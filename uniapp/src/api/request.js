@@ -82,8 +82,21 @@ export function request(options = {}) {
           return;
         }
 
-        // 成功返回
-        resolve(resData);
+        // 成功返回 — 归一化响应格式
+        // 新格式: { code: 0, data: {...}, message: "ok" }
+        // 旧格式: { token, user } / { request, state } / { message, state }
+        if (resData && typeof resData === 'object' && 'code' in resData) {
+          if (resData.code === 0) {
+            resolve(resData);
+          } else {
+            const msg = resData.message || `请求失败 (${resData.code})`;
+            uni.showToast({ title: msg, icon: "none" });
+            reject(new Error(msg));
+          }
+        } else {
+          // 旧格式直接透传
+          resolve(resData);
+        }
       },
       fail: (err) => {
         uni.showToast({ title: "网络连接失败", icon: "none" });

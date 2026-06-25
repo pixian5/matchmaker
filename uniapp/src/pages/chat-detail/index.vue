@@ -37,7 +37,7 @@ onLoad((options) => {
 const loadMessages = async () => {
   try {
     const res = await getChatMessagesApi(threadId.value);
-    messages.value = res.data || [];
+    messages.value = res.data?.list || [];
     setTimeout(() => {
       scrollToId.value = 'scroll-bottom';
     }, 100);
@@ -53,22 +53,32 @@ const handleSend = async () => {
   
   // Optimistic UI
   const tempId = Date.now().toString();
-  messages.value.push({
+  const tempMessage = {
     id: tempId,
     content,
     senderId: userStore.userId,
     senderRole: 'client',
     createdAt: new Date().toISOString()
-  });
+  };
+  messages.value.push(tempMessage);
   inputText.value = '';
   setTimeout(() => {
     scrollToId.value = 'msg-' + tempId;
   }, 50);
   
   try {
-    await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
-    loadMessages();
+    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
+    // 用服务器返回的真实消息替换临时消息
+    const realMessage = res.message || res.data?.message;
+    if (realMessage) {
+      const index = messages.value.findIndex(m => m.id === tempId);
+      if (index !== -1) {
+        messages.value[index] = realMessage;
+      }
+    }
   } catch (error) {
+    // 发送失败，移除临时消息
+    messages.value = messages.value.filter(m => m.id !== tempId);
     uni.showToast({ title: '发送失败', icon: 'none' });
   } finally {
     sending.value = false;

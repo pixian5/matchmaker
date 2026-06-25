@@ -3225,7 +3225,7 @@ async function miniSwitchUser() {
       const response = await fetch(`${API_BASE}/auth/client/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: selectedId }),
+        body: JSON.stringify({ userId: selectedId, password: "123456" }),
       });
       if (!response.ok) throw new Error("login failed");
       const data = await response.json();

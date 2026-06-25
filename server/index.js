@@ -195,6 +195,10 @@ seedState.users.forEach((u) => {
   if (!u.delegatedMatchmakerIds) {
     u.delegatedMatchmakerIds = u.referralMatchmakerId ? [u.referralMatchmakerId] : ["m1", "m2"];
   }
+  // 为种子用户设置默认密码 "123456"，防止无密码即可登录
+  if (!u.passwordHash) {
+    u.passwordHash = hashPassword("123456");
+  }
 });
 
 const pool = new Pool(
@@ -211,6 +215,34 @@ const pool = new Pool(
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+
+function shouldInvalidateStateCache(sql) {
+  if (typeof sql !== "string") return false;
+  return /^(insert|update|delete|truncate|create|drop|alter|replace)\b/i.test(sql.trim());
+}
+
+const rawPoolQuery = pool.query.bind(pool);
+pool.query = async (...args) => {
+  const result = await rawPoolQuery(...args);
+  if (shouldInvalidateStateCache(args[0])) {
+    invalidateStateCache();
+  }
+  return result;
+};
+
+const rawPoolConnect = pool.connect.bind(pool);
+pool.connect = async (...args) => {
+  const client = await rawPoolConnect(...args);
+  const rawClientQuery = client.query.bind(client);
+  client.query = async (...queryArgs) => {
+    const result = await rawClientQuery(...queryArgs);
+    if (shouldInvalidateStateCache(queryArgs[0])) {
+      invalidateStateCache();
+    }
+    return result;
+  };
+  return client;
+};
 
 async function initDatabase() {
   await pool.query(`
@@ -566,7 +598,26 @@ function normalizeEmail(value) {
   return email ? email.toLowerCase() : null;
 }
 
+// 简单的内存缓存，减少频繁的全量数据库查询
+let stateCache = null;
+let stateCacheTime = 0;
+const STATE_CACHE_TTL = 1000; // 1秒缓存
+
+function invalidateStateCache() {
+  stateCache = null;
+  stateCacheTime = 0;
+}
+
+function cloneState(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 async function readState() {
+  const now = Date.now();
+  if (stateCache && now - stateCacheTime < STATE_CACHE_TTL) {
+    return cloneState(stateCache);
+  }
+
   const agenciesRes = await pool.query("select raw from agencies order by id");
   const matchmakersRes = await pool.query("select raw from matchmakers order by id");
   const usersRes = await pool.query("select raw from users order by id");
@@ -678,7 +729,7 @@ async function readState() {
     }
   }
 
-  return {
+  stateCache = {
     currentUserId: runtimeSettings.currentUserId,
     selectedMatchmakerId: runtimeSettings.selectedMatchmakerId,
     adminLoggedIn: runtimeSettings.adminLoggedIn,
@@ -692,6 +743,8 @@ async function readState() {
     deals: dealsRes.rows.map(r => r.raw),
     promoCodes: promoCodesRes.rows.map(r => r.raw),
   };
+  stateCacheTime = Date.now();
+  return cloneState(stateCache);
 }
 
 async function writeState(data) {
@@ -996,6 +1049,8 @@ async function syncNormalizedState(data, existingClient = null) {
       client.release();
     }
   }
+
+  invalidateStateCache();
 }
 
 app.get("/api/health", async (_request, response) => {
@@ -1865,7 +1920,29 @@ app.get("/api/client/chat/threads", requireAuth(["client"]), async (request, res
       [JSON.stringify([{ role: "client", id: userId }])],
     );
 
-    const list = res.rows.map((row) => row.raw);
+    // 查询所有参与者信息用于匹配对方名称
+    const usersRes = await pool.query("SELECT id, name, raw->>'photo' as photo, 'client' as role FROM users");
+    const matchmakersRes = await pool.query("SELECT id, name, raw->>'photo' as photo, 'matchmaker' as role FROM matchmakers");
+    const participantMap = new Map(
+      [...usersRes.rows, ...matchmakersRes.rows].map((r) => [r.id, { name: r.name, photo: r.photo, role: r.role }]),
+    );
+
+    const list = res.rows.map((row) => {
+      const thread = row.raw;
+      // 找到对方（非当前用户的参与者）
+      const otherParticipant = (thread.participants || []).find(p => p.id !== userId);
+      const otherUser = otherParticipant ? participantMap.get(otherParticipant.id) : null;
+
+      return {
+        ...thread,
+        otherUser: otherUser ? {
+          id: otherParticipant.id,
+          name: otherUser.name,
+          photo: otherUser.photo,
+          role: otherUser.role
+        } : null
+      };
+    });
 
     response.json({ code: 0, data: { list }, message: "ok" });
   } catch (err) {
