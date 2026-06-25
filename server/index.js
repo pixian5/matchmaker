@@ -1671,6 +1671,244 @@ app.post("/api/admin/deals/simulate", requireAuth(["admin"]), async (request, re
   response.status(201).json({ deal, state: publicState(await readState()) });
 });
 
+// ==========================================
+// 客户端 REST API（统一返回格式）
+// ==========================================
+
+// 11. 获取当前登录用户资料
+app.get("/api/client/me", requireAuth(["client"]), async (request, response) => {
+  try {
+    const userId = request.user.sub;
+
+    // 从 users 表查询当前用户，raw 字段包含完整信息
+    const userRes = await pool.query("select raw from users where id = $1", [userId]);
+    if (userRes.rows.length === 0) {
+      return response.status(404).json({ code: 404, message: "用户不存在" });
+    }
+
+    const raw = userRes.rows[0].raw;
+    // 排除敏感字段：密码哈希和身份证号
+    const { passwordHash, idCard, ...userInfo } = raw;
+
+    response.json({ code: 0, data: { user: userInfo }, message: "ok" });
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
+// 12. 分页获取异性资料列表
+app.get("/api/client/profiles", requireAuth(["client"]), async (request, response) => {
+  try {
+    const userId = request.user.sub;
+    const page = Math.max(1, parseInt(request.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(request.query.pageSize) || 20));
+    const { gender, minAge, maxAge, city } = request.query;
+
+    // 先查当前用户信息，确定性别以便默认筛选异性
+    const meRes = await pool.query("select gender, vip from users where id = $1", [userId]);
+    if (meRes.rows.length === 0) {
+      return response.status(404).json({ code: 404, message: "用户不存在" });
+    }
+    const myGender = meRes.rows[0].gender;
+    const isVip = meRes.rows[0].vip;
+
+    // 构建查询条件：排除自己、默认筛选异性
+    const conditions = ["id != $1"];
+    const params = [userId];
+    let paramIndex = 2;
+
+    // 性别筛选：优先使用传入参数，否则默认异性
+    const targetGender = gender || (myGender === "男" ? "女" : myGender === "女" ? "男" : null);
+    if (targetGender) {
+      conditions.push(`gender = $${paramIndex}`);
+      params.push(targetGender);
+      paramIndex++;
+    }
+
+    // 年龄范围筛选
+    if (minAge) {
+      conditions.push(`age >= $${paramIndex}`);
+      params.push(parseInt(minAge));
+      paramIndex++;
+    }
+    if (maxAge) {
+      conditions.push(`age <= $${paramIndex}`);
+      params.push(parseInt(maxAge));
+      paramIndex++;
+    }
+
+    // 城市筛选
+    if (city) {
+      conditions.push(`city = $${paramIndex}`);
+      params.push(city);
+      paramIndex++;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    // 查询总数
+    const countRes = await pool.query(`SELECT count(*) FROM users ${whereClause}`, params);
+    const total = parseInt(countRes.rows[0].count);
+
+    // 分页查询用户列表
+    const offset = (page - 1) * pageSize;
+    const listRes = await pool.query(
+      `SELECT raw FROM users ${whereClause} ORDER BY updated_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+      [...params, pageSize, offset],
+    );
+
+    // 处理返回数据：排除敏感字段，非 VIP 不返回 wechat
+    const list = listRes.rows.map((row) => {
+      const { passwordHash, idCard, ...userInfo } = row.raw;
+      if (!isVip) {
+        delete userInfo.wechat;
+      }
+      return userInfo;
+    });
+
+    response.json({
+      code: 0,
+      data: { list, total, page, pageSize },
+      message: "ok",
+    });
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
+// 13. 获取指定用户详情
+app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, response) => {
+  try {
+    const userId = request.user.sub;
+    const targetId = request.params.id;
+
+    // 查询当前用户的 VIP 状态
+    const meRes = await pool.query("select vip from users where id = $1", [userId]);
+    if (meRes.rows.length === 0) {
+      return response.status(404).json({ code: 404, message: "当前用户不存在" });
+    }
+    const isVip = meRes.rows[0].vip;
+
+    // 查询目标用户
+    const targetRes = await pool.query("select raw from users where id = $1", [targetId]);
+    if (targetRes.rows.length === 0) {
+      return response.status(404).json({ code: 404, message: "用户不存在" });
+    }
+
+    // 排除敏感字段
+    const { passwordHash, idCard, ...userInfo } = targetRes.rows[0].raw;
+    // 非 VIP 用户不返回微信号
+    if (!isVip) {
+      delete userInfo.wechat;
+    }
+
+    response.json({ code: 0, data: { user: userInfo }, message: "ok" });
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
+// 14. 获取我的牵线记录
+app.get("/api/client/match-requests", requireAuth(["client"]), async (request, response) => {
+  try {
+    const userId = request.user.sub;
+
+    // 查询当前用户发起的牵线请求，JOIN users 表获取对方基本信息
+    const res = await pool.query(
+      `SELECT
+         mr.raw AS request_raw,
+         tu.id AS to_user_id,
+         tu.name AS to_user_name,
+         tu.gender AS to_user_gender,
+         tu.age AS to_user_age,
+         tu.city AS to_user_city,
+         tu.raw->>'photo' AS to_user_photo
+       FROM match_requests mr
+       LEFT JOIN users tu ON tu.id = mr.to_user_id
+       WHERE mr.from_user_id = $1
+       ORDER BY mr.created_at DESC`,
+      [userId],
+    );
+
+    const list = res.rows.map((row) => ({
+      ...row.request_raw,
+      toUser: {
+        id: row.to_user_id,
+        name: row.to_user_name,
+        gender: row.to_user_gender,
+        age: row.to_user_age,
+        city: row.to_user_city,
+        photo: row.to_user_photo,
+      },
+    }));
+
+    response.json({ code: 0, data: { list }, message: "ok" });
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
+// 15. 获取我的聊天线程列表
+app.get("/api/client/chat/threads", requireAuth(["client"]), async (request, response) => {
+  try {
+    const userId = request.user.sub;
+
+    // 从 participants jsonb 数组中查找包含当前用户 ID 的线程
+    const res = await pool.query(
+      `SELECT raw FROM chat_threads
+       WHERE participants @> $1::jsonb
+       ORDER BY COALESCE(raw->>'lastMessageAt', raw->>'createdAt') DESC`,
+      [JSON.stringify([{ role: "client", id: userId }])],
+    );
+
+    const list = res.rows.map((row) => row.raw);
+
+    response.json({ code: 0, data: { list }, message: "ok" });
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
+// 16. 获取聊天消息
+app.get("/api/client/chat/threads/:id/messages", requireAuth(["client"]), async (request, response) => {
+  try {
+    const userId = request.user.sub;
+    const threadId = request.params.id;
+
+    // 先验证用户是否是该线程的参与者
+    const threadRes = await pool.query("select raw from chat_threads where id = $1", [threadId]);
+    if (threadRes.rows.length === 0) {
+      return response.status(404).json({ code: 404, message: "聊天线程不存在" });
+    }
+
+    const thread = threadRes.rows[0].raw;
+    const isParticipant = (thread.participants || []).some(
+      (p) => p.role === "client" && p.id === userId,
+    );
+    if (!isParticipant) {
+      return response.status(403).json({ code: 403, message: "无权访问该聊天线程" });
+    }
+
+    // 查询该线程的所有消息，按时间正序
+    const msgRes = await pool.query(
+      "SELECT raw FROM chat_messages WHERE thread_id = $1 ORDER BY created_at ASC",
+      [threadId],
+    );
+
+    const list = msgRes.rows.map((row) => row.raw);
+
+    response.json({ code: 0, data: { list }, message: "ok" });
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
 app.use((error, _request, response, _next) => {
   console.error(error);
   response.status(500).json({ error: "internal server error" });

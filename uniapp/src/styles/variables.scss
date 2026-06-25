@@ -1,0 +1,52 @@
+// SCSS 主题变量 — 从原 styles.css 1:1 迁移
+// 主色调
+$color-primary: #0f766e;        // teal 主色
+$color-primary-dark: #115e59;   // teal 深色
+$color-primary-light: #ccfbf1;  // teal 浅色背景
+
+// 功能色
+$color-coral: #dc6b5c;          // 警告/退出
+$color-gold: #b7791f;           // VIP 金色
+$color-gold-bg: #fff1c7;        // VIP 背景
+$color-blue: #3867d6;           // 管理蓝
+
+// 文字色
+$color-ink: #1e2633;            // 主文字
+$color-muted: #6d7785;          // 次要文字
+$color-placeholder: #a0aab4;    // 占位文字
+
+// 边框/背景
+$color-line: #dfe5ec;           // 边框线
+$color-paper: #fbfcfd;          // 浅底色
+$color-panel: #ffffff;          // 面板白
+$color-bg: #eef2f5;             // 页面底色
+
+// 阴影
+$shadow-card: 0 4px 16px rgba(30, 38, 51, 0.06);
+$shadow-modal: 0 18px 45px rgba(30, 38, 51, 0.1);
+
+// 圆角
+$radius-sm: 8rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-xl: 32rpx;
+$radius-round: 999rpx;
+
+// 间距
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+$spacing-xl: 48rpx;
+
+// 字号
+$font-xs: 22rpx;
+$font-sm: 24rpx;
+$font-base: 28rpx;
+$font-md: 30rpx;
+$font-lg: 34rpx;
+$font-xl: 40rpx;
+$font-title: 48rpx;
+
+// 字体
+$font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;

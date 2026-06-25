@@ -1,0 +1,202 @@
+@import './variables.scss';
+
+/* 全局重置与基础样式 */
+page {
+  font-family: $font-family;
+  font-size: $font-base;
+  color: $color-ink;
+  background-color: $color-bg;
+  line-height: 1.6;
+}
+
+/* 安全区域 */
+.safe-area-bottom {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 通用容器 */
+.container {
+  padding: $spacing-lg;
+}
+
+/* 卡片样式 */
+.card {
+  background: $color-panel;
+  border-radius: $radius-md;
+  box-shadow: $shadow-card;
+  overflow: hidden;
+}
+
+/* 主按钮 */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  background: $color-primary;
+  color: #ffffff;
+  border-radius: $radius-md;
+  font-size: $font-md;
+  font-weight: 600;
+  border: none;
+
+  &:active {
+    background: $color-primary-dark;
+  }
+
+  &.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+}
+
+/* 次要按钮 */
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  background: $color-panel;
+  color: $color-primary;
+  border: 2rpx solid $color-primary;
+  border-radius: $radius-md;
+  font-size: $font-md;
+  font-weight: 600;
+
+  &:active {
+    background: $color-primary-light;
+  }
+}
+
+/* 文字链接 */
+.link {
+  color: $color-primary;
+  font-size: $font-sm;
+}
+
+/* VIP 标签 */
+.vip-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  background: $color-gold-bg;
+  color: $color-gold;
+  border-radius: $radius-round;
+  font-size: $font-xs;
+  font-weight: 600;
+}
+
+/* 状态标签 */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6rpx 16rpx;
+  border-radius: $radius-round;
+  font-size: $font-xs;
+
+  &.status-pending {
+    background: #fef3cd;
+    color: #856404;
+  }
+  &.status-active {
+    background: #d4edda;
+    color: #155724;
+  }
+  &.status-done {
+    background: #e2e3e5;
+    color: #383d41;
+  }
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 120rpx $spacing-lg;
+  color: $color-muted;
+
+  .empty-icon {
+    font-size: 100rpx;
+    margin-bottom: $spacing-md;
+  }
+
+  .empty-text {
+    font-size: $font-base;
+    text-align: center;
+  }
+}
+
+/* 分割线 */
+.divider {
+  height: 1rpx;
+  background: $color-line;
+  margin: $spacing-md 0;
+}
+
+/* 表单 */
+.form-group {
+  margin-bottom: $spacing-lg;
+
+  .form-label {
+    display: block;
+    font-size: $font-sm;
+    color: $color-muted;
+    margin-bottom: $spacing-xs;
+  }
+
+  .form-input {
+    width: 100%;
+    height: 80rpx;
+    padding: 0 $spacing-md;
+    background: $color-paper;
+    border: 2rpx solid $color-line;
+    border-radius: $radius-md;
+    font-size: $font-base;
+    color: $color-ink;
+
+    &:focus {
+      border-color: $color-primary;
+    }
+  }
+
+  .form-textarea {
+    width: 100%;
+    min-height: 200rpx;
+    padding: $spacing-sm $spacing-md;
+    background: $color-paper;
+    border: 2rpx solid $color-line;
+    border-radius: $radius-md;
+    font-size: $font-base;
+    color: $color-ink;
+
+    &:focus {
+      border-color: $color-primary;
+    }
+  }
+}
+
+/* 列表项 */
+.list-item {
+  display: flex;
+  align-items: center;
+  padding: $spacing-md $spacing-lg;
+  background: $color-panel;
+  border-bottom: 1rpx solid $color-line;
+
+  &:active {
+    background: $color-paper;
+  }
+}
+
+/* 加载中 */
+.loading-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-xl;
+  color: $color-muted;
+  font-size: $font-sm;
+}

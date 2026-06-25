@@ -24,9 +24,7 @@ services:
     ports:
       - "8096:80"
     volumes:
-      - ./dist/mini.html:/usr/share/nginx/html/index.html:ro
-      - ./styles.css:/usr/share/nginx/html/styles.css:ro
-      - ./app.js:/usr/share/nginx/html/app.js:ro
+      - ./uniapp/dist/build/h5:/usr/share/nginx/html:ro
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   web-matchmaker:
