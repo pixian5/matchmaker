@@ -43,11 +43,31 @@ log "正在生成带自动版本号的静态页面..."
 
 if echo "$CHANGED_FILES" | grep -q '^uniapp/'; then
   log "检测到 uniapp/ 变更，构建 H5 版本..."
-  (
-    cd "$REPO_DIR/uniapp"
-    npm install 2>&1 | tee -a "$LOG_FILE"
-    npm run build:h5 2>&1 | tee -a "$LOG_FILE"
-  )
+  NPM_BIN="${NPM_BIN:-}"
+  if [ -z "$NPM_BIN" ] && command -v npm >/dev/null 2>&1; then
+    NPM_BIN="$(command -v npm)"
+  fi
+  if [ -z "$NPM_BIN" ] && [ -x "$(dirname "$NODE_BIN")/npm" ]; then
+    NPM_BIN="$(dirname "$NODE_BIN")/npm"
+  fi
+
+  if [ -n "$NPM_BIN" ] && [ -x "$NPM_BIN" ]; then
+    (
+      cd "$REPO_DIR/uniapp"
+      "$NPM_BIN" install 2>&1 | tee -a "$LOG_FILE"
+      "$NPM_BIN" run build:h5 2>&1 | tee -a "$LOG_FILE"
+    )
+  elif command -v docker >/dev/null 2>&1; then
+    log "宿主机 npm 未找到，改用 Docker Node 构建 uniapp H5..."
+    docker run --rm \
+      -v "$REPO_DIR/uniapp:/app" \
+      -w /app \
+      node:22-alpine \
+      sh -lc 'npm install && npm run build:h5' 2>&1 | tee -a "$LOG_FILE"
+  else
+    log "ERROR: npm 和 Docker 都不可用，无法构建 uniapp H5"
+    exit 1
+  fi
 else
   log "无 uniapp/ 变更，跳过 H5 构建"
 fi
