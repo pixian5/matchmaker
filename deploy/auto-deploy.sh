@@ -2,7 +2,7 @@
 # auto-deploy.sh - 由 GitHub Webhook 或手动触发，自动拉取代码并重启服务
 # 用法: bash /opt/mediapeople/deploy/auto-deploy.sh
 
-set -e
+set -eo pipefail
 
 REPO_DIR="/opt/mediapeople"
 LOG_FILE="/var/log/mediapeople-deploy.log"
@@ -37,6 +37,7 @@ if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
   log "ERROR: Node.js 未找到，无法生成自动版本号静态页面"
   exit 1
 fi
+export PATH="$(dirname "$NODE_BIN"):$PATH"
 
 log "正在生成带自动版本号的静态页面..."
 "$NODE_BIN" "$REPO_DIR/scripts/render-static.mjs" 2>&1 | tee -a "$LOG_FILE"
