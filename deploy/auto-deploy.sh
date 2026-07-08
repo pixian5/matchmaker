@@ -85,7 +85,8 @@ fi
 # 重建 SSL version API（若有必要）
 if docker ps --format '{{.Names}}' | grep -q 'mediapeople-web-ssl'; then
   if echo "$CHANGED_FILES" | grep -q '^server/'; then
-    docker compose -f "$REPO_DIR/compose.ssl.yml" up -d 2>&1 | tee -a "$LOG_FILE"
+    docker compose -f "$REPO_DIR/compose.yml" -f "$REPO_DIR/compose.ssl.yml" up -d \
+      web-ssl web-mini-ssl web-matchmaker-ssl web-admin-ssl 2>&1 | tee -a "$LOG_FILE"
   fi
 fi
 
