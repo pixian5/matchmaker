@@ -1397,10 +1397,11 @@ function renderProfiles() {
   const profileMatchmakerId = getUserBoundMatchmakerIds(profile)[0] || profile.referralMatchmakerId || null;
   const profileView = getVisibleProfile(profile, profileMatchmakerId);
   
-  const requirement = user.vip
+  const canViewProfile = profileMatchmakerId ? isVipForMatchmaker(user, profileMatchmakerId) : user.vip;
+  const requirement = canViewProfile
     ? profileView.requirements
     : "开通会员后可查看对方的择偶要求";
-  const lockedClass = user.vip ? "" : " locked";
+  const lockedClass = canViewProfile ? "" : " locked";
 
   const delegatedMms = (profile.delegatedMatchmakerIds || [])
     .map(id => getMatchmaker(id))
@@ -1469,10 +1470,11 @@ function showProfileDetail(profileId) {
   const profileMatchmakerId = getUserBoundMatchmakerIds(profile)[0] || profile.referralMatchmakerId || null;
   const profileView = getVisibleProfile(profile, profileMatchmakerId);
 
-  const requirement = user.vip
+  const canViewProfile = profileMatchmakerId ? isVipForMatchmaker(user, profileMatchmakerId) : user.vip;
+  const requirement = canViewProfile
     ? profileView.requirements
     : "开通会员后可查看对方的择偶要求";
-  const lockedClass = user.vip ? "" : " locked";
+  const lockedClass = canViewProfile ? "" : " locked";
 
   const delegatedMms = (profile.delegatedMatchmakerIds || [])
     .map(id => getMatchmaker(id))

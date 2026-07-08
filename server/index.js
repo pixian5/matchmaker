@@ -493,6 +493,16 @@ function upsertUserVipMatchmaker(user, matchmakerId) {
   return user;
 }
 
+function canViewTargetContact(viewer, target) {
+  const viewerVipIds = Array.isArray(viewer?.vipMatchmakerIds) ? viewer.vipMatchmakerIds : [];
+  const targetMatchmakerIds = Array.isArray(target?.delegatedMatchmakerIds) && target.delegatedMatchmakerIds.length
+    ? target.delegatedMatchmakerIds
+    : target?.referralMatchmakerId
+      ? [target.referralMatchmakerId]
+      : [];
+  return targetMatchmakerIds.some((id) => viewerVipIds.includes(id));
+}
+
 function getRequestContactStatus(request) {
   if (request.maleContacted && request.femaleContacted) return "来和双方对话";
   if (request.maleContacted) return "联系男方";
@@ -1795,12 +1805,12 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
     const { gender, minAge, maxAge, city } = request.query;
 
     // 先查当前用户信息，确定性别以便默认筛选异性
-    const meRes = await pool.query("select gender, vip from users where id = $1", [userId]);
+    const meRes = await pool.query("select raw from users where id = $1", [userId]);
     if (meRes.rows.length === 0) {
       return response.status(404).json({ code: 404, message: "用户不存在" });
     }
-    const myGender = meRes.rows[0].gender;
-    const isVip = meRes.rows[0].vip;
+    const me = ensureUserDefaults(meRes.rows[0].raw);
+    const myGender = me.gender;
 
     // 构建查询条件：排除自己、默认筛选异性
     const conditions = ["id != $1"];
@@ -1853,7 +1863,7 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
     // 处理返回数据：排除敏感字段，非 VIP 不返回 wechat
     const list = listRes.rows.map((row) => {
       const { passwordHash, idCard, ...userInfo } = row.raw;
-      if (!isVip) {
+      if (!canViewTargetContact(me, row.raw)) {
         delete userInfo.wechat;
       }
       userInfo.delegatedMatchmakers = (userInfo.delegatedMatchmakerIds || [])
@@ -1881,11 +1891,11 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
     const targetId = request.params.id;
 
     // 查询当前用户的 VIP 状态
-    const meRes = await pool.query("select vip from users where id = $1", [userId]);
+    const meRes = await pool.query("select raw from users where id = $1", [userId]);
     if (meRes.rows.length === 0) {
       return response.status(404).json({ code: 404, message: "当前用户不存在" });
     }
-    const isVip = meRes.rows[0].vip;
+    const me = ensureUserDefaults(meRes.rows[0].raw);
 
     // 查询目标用户
     const targetRes = await pool.query("select raw from users where id = $1", [targetId]);
@@ -1896,7 +1906,7 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
     // 排除敏感字段
     const { passwordHash, idCard, ...userInfo } = targetRes.rows[0].raw;
     // 非 VIP 用户不返回微信号
-    if (!isVip) {
+    if (!canViewTargetContact(me, targetRes.rows[0].raw)) {
       delete userInfo.wechat;
     }
     const matchmakersRes = await pool.query("select raw from matchmakers");
