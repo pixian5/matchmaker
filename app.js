@@ -2231,8 +2231,8 @@ function renderMatchmakerDesk() {
             : "";
         const memberChatEnabled = Boolean(request.memberChatEnabled);
         const chatToggleBtn = memberChatEnabled
-          ? `<button class="ghost-button" data-toggle-member-chat="${request.id}" data-chat-enabled="false" type="button" style="width: auto;">关闭双方沟通</button>`
-          : `<button class="primary-button" data-toggle-member-chat="${request.id}" data-chat-enabled="true" type="button" style="width: auto;">开启双方沟通</button>`;
+          ? `<button class="member-chat-toggle member-chat-toggle-off" data-toggle-member-chat="${request.id}" data-chat-enabled="false" type="button">关闭双方沟通</button>`
+          : `<button class="member-chat-toggle member-chat-toggle-on" data-toggle-member-chat="${request.id}" data-chat-enabled="true" type="button">开启双方沟通</button>`;
         const approvedTag = `
           <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding:10px 12px; border-radius:12px; background:${memberChatEnabled ? "rgba(20, 184, 166, 0.10)" : "rgba(148, 163, 184, 0.12)"};">
             <div>
