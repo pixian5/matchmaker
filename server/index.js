@@ -1741,7 +1741,7 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     [JSON.stringify(thread), threadId]
   );
 
-  response.status(201).json({ message, state: publicState(await readState()) });
+  response.status(201).json({ message, thread });
 });
 
 // 6. 管理员：添加机构

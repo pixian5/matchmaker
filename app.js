@@ -1020,6 +1020,47 @@ function appendLocalMessage(threadId, senderRole, senderId, content) {
   return message;
 }
 
+function refreshThreadPreview(threadId) {
+  const thread = getThreadById(threadId);
+  if (!thread) return;
+  const lastMessage = getThreadMessages(threadId).slice(-1)[0] || null;
+  thread.lastMessageAt = lastMessage?.createdAt || null;
+  thread.lastMessagePreview = lastMessage?.content?.slice(0, 80) || "";
+}
+
+function removeMessageById(messageId) {
+  const message = state.chatMessages.find((item) => item.id === messageId);
+  state.chatMessages = state.chatMessages.filter((item) => item.id !== messageId);
+  if (message?.threadId) {
+    refreshThreadPreview(message.threadId);
+  }
+}
+
+function upsertThread(threadPatch) {
+  if (!threadPatch?.id) return;
+  const existingIndex = state.chatThreads.findIndex((thread) => thread.id === threadPatch.id);
+  if (existingIndex === -1) {
+    state.chatThreads.unshift(ensureThreadDefaults(threadPatch));
+    return;
+  }
+  state.chatThreads[existingIndex] = ensureThreadDefaults({
+    ...state.chatThreads[existingIndex],
+    ...threadPatch,
+  });
+}
+
+function upsertChatMessage(message) {
+  if (!message?.id) return;
+  removeMessageById(message.id);
+  state.chatMessages.push(message);
+  state.chatMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const thread = getThreadById(message.threadId);
+  if (thread) {
+    thread.lastMessageAt = message.createdAt;
+    thread.lastMessagePreview = message.content.slice(0, 80);
+  }
+}
+
 function renderAll() {
   renderFilters();
   renderMiniApp();
@@ -2572,6 +2613,17 @@ async function sendMiniChatMessage(event) {
   }
   const content = input.value.trim();
   if (!content) return;
+  const tempMessage = {
+    id: `temp_${Date.now().toString(36)}`,
+    threadId: thread.id,
+    senderRole: "client",
+    senderId: user.id,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  upsertChatMessage(tempMessage);
+  input.value = "";
+  renderAll();
 
   if (apiAvailable) {
     try {
@@ -2585,18 +2637,22 @@ async function sendMiniChatMessage(event) {
         throw new Error(err.error || "failed");
       }
       const data = await res.json();
-      state = data.state;
+      removeMessageById(tempMessage.id);
+      upsertThread(data.thread);
+      upsertChatMessage(data.message);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      input.value = "";
       renderAll();
     } catch (err) {
+      removeMessageById(tempMessage.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
       console.warn("API send mini chat failed, fallback to local:", err);
       showToast("操作失败：" + err.message);
       return;
     }
   } else {
+    removeMessageById(tempMessage.id);
     appendLocalMessage(thread.id, "client", user.id, content);
-    input.value = "";
     saveState();
     renderAll();
   }
@@ -2635,6 +2691,17 @@ async function sendMatchmakerChatMessage(event) {
   if (!thread || !matchmaker || !input) return;
   const content = input.value.trim();
   if (!content) return;
+  const tempMessage = {
+    id: `temp_${Date.now().toString(36)}`,
+    threadId: thread.id,
+    senderRole: "matchmaker",
+    senderId: matchmaker.id,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  upsertChatMessage(tempMessage);
+  input.value = "";
+  renderAll();
 
   if (apiAvailable) {
     try {
@@ -2648,18 +2715,22 @@ async function sendMatchmakerChatMessage(event) {
         throw new Error(err.error || "failed");
       }
       const data = await res.json();
-      state = data.state;
+      removeMessageById(tempMessage.id);
+      upsertThread(data.thread);
+      upsertChatMessage(data.message);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      input.value = "";
       renderAll();
     } catch (err) {
+      removeMessageById(tempMessage.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
       console.warn("API send matchmaker chat failed, fallback to local:", err);
       showToast("操作失败：" + err.message);
       return;
     }
   } else {
+    removeMessageById(tempMessage.id);
     appendLocalMessage(thread.id, "matchmaker", matchmaker.id, content);
-    input.value = "";
     saveState();
     renderAll();
   }

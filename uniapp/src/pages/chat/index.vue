@@ -36,7 +36,7 @@ const list = ref([]);
 const loading = ref(false);
 let pollTimer = null;
 
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 2000;
 
 const loadData = async () => {
   if (!userStore.isLoggedIn) return;

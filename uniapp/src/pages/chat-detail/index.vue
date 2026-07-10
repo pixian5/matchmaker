@@ -1,6 +1,6 @@
 <template>
   <view class="chat-detail-container">
-    <scroll-view class="message-list" scroll-y :scroll-into-view="scrollToId" scroll-with-animation>
+    <scroll-view class="message-list" scroll-y :scroll-into-view="scrollToId" :scroll-top="scrollTop" scroll-with-animation>
       <view v-if="!loading && messages.length === 0" class="chat-empty">
         <view class="empty-mark">缘</view>
         <text class="empty-title">还没有消息</text>
@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { ref, onUnmounted } from 'vue';
+import { nextTick, ref, onUnmounted } from 'vue';
 import { getChatMessagesApi, sendMessageApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
 import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
@@ -35,10 +35,11 @@ const inputText = ref('');
 const sending = ref(false);
 const loading = ref(true);
 const scrollToId = ref('');
+const scrollTop = ref(0);
 const tempMessageIds = ref(new Set());
 let pollTimer = null;
 
-const POLL_INTERVAL = 3000;
+const POLL_INTERVAL = 1000;
 
 onLoad((options) => {
   if (options.threadId) {
@@ -51,6 +52,7 @@ onLoad((options) => {
 });
 
 onShow(() => {
+  syncLatestMessages(true);
   startPolling();
 });
 
@@ -132,9 +134,13 @@ const upsertMessage = (message) => {
 };
 
 const scrollToBottom = () => {
-  setTimeout(() => {
-    scrollToId.value = 'scroll-bottom';
-  }, 50);
+  scrollToId.value = '';
+  nextTick(() => {
+    setTimeout(() => {
+      scrollTop.value += 100000;
+      scrollToId.value = 'scroll-bottom';
+    }, 30);
+  });
 };
 
 const formatTime = (dateStr) => {
