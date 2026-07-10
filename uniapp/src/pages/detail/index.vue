@@ -24,24 +24,29 @@
     
     <view class="info-card">
       <view class="section-title">择偶要求</view>
-      <text class="section-content">{{ profile.requirements || '未填写' }}</text>
+      <text v-if="!detailLoading" class="section-content">{{ profile.requirements || '未填写' }}</text>
+      <view v-else class="skeleton-line"></view>
     </view>
     
     <view class="info-card">
       <view class="section-title">联系方式</view>
-      <text class="section-content" v-if="profile.wechat">{{ profile.wechat }}</text>
-      <text class="section-content lock-text" v-else>VIP会员可见对方微信号</text>
+      <text v-if="!detailLoading && profile.wechat" class="section-content">{{ profile.wechat }}</text>
+      <text v-else-if="!detailLoading" class="section-content lock-text">VIP会员可见对方微信号</text>
+      <view v-else class="skeleton-line short"></view>
     </view>
 
     <view class="info-card">
       <view class="section-title">选择牵线红娘</view>
-      <picker v-if="boundMatchmakers.length" mode="selector" :range="matchmakerNames" :value="selectedMatchmakerIndex" @change="handleMatchmakerChange">
-        <view class="picker-field">{{ selectedMatchmakerLabel }}</view>
-      </picker>
-      <text v-else class="section-content lock-text">该会员暂未绑定红娘，无法申请牵线</text>
-      <text v-if="selectedMatchmaker && !isVipForSelectedMatchmaker" class="vip-hint">
-        申请前会先开通 {{ selectedMatchmaker.name }} 的专属 VIP
-      </text>
+      <template v-if="!detailLoading">
+        <picker v-if="boundMatchmakers.length" mode="selector" :range="matchmakerNames" :value="selectedMatchmakerIndex" @change="handleMatchmakerChange">
+          <view class="picker-field">{{ selectedMatchmakerLabel }}</view>
+        </picker>
+        <text v-else class="section-content lock-text">该会员暂未绑定红娘，无法申请牵线</text>
+        <text v-if="selectedMatchmaker && !isVipForSelectedMatchmaker" class="vip-hint">
+          申请前会先开通 {{ selectedMatchmaker.name }} 的专属 VIP
+        </text>
+      </template>
+      <view v-else class="skeleton-line"></view>
     </view>
     
     <view class="bottom-action safe-area-bottom">
@@ -64,6 +69,7 @@ import { useUserStore } from '@/store/user';
 const userStore = useUserStore();
 const profile = ref(null);
 const loading = ref(true);
+const detailLoading = ref(true);
 const requesting = ref(false);
 const selectedMatchmakerIndex = ref(0);
 
@@ -76,8 +82,27 @@ const isVipForSelectedMatchmaker = computed(() => {
   return selectedMatchmaker.value ? vipIds.includes(selectedMatchmaker.value.id) : false;
 });
 
+const buildPreviewProfile = (options) => {
+  if (!options?.id) return null;
+  return {
+    id: options.id,
+    name: options.name || '',
+    age: options.age ? Number(options.age) : 0,
+    city: options.city || '',
+    job: options.job || '',
+    bio: options.bio || '',
+    photo: options.photo || '',
+    vip: options.vip === '1'
+  };
+};
+
 onLoad((options) => {
-  if (options.id) {
+  const preview = buildPreviewProfile(options);
+  if (preview) {
+    profile.value = preview;
+    loading.value = false;
+  }
+  if (options?.id) {
     loadProfile(options.id);
   }
 });
@@ -85,12 +110,15 @@ onLoad((options) => {
 const loadProfile = async (id) => {
   try {
     const res = await getProfileDetailApi(id);
-    profile.value = res.data?.user || res.data || res;
+    const fullProfile = res.data?.user || res.data || res;
+    profile.value = { ...profile.value, ...fullProfile };
     selectedMatchmakerIndex.value = 0;
   } catch (error) {
-    // handled by interceptor
+    if (!profile.value) {
+      loading.value = false;
+    }
   } finally {
-    loading.value = false;
+    detailLoading.value = false;
   }
 };
 
@@ -123,8 +151,11 @@ const submitMatchRequest = async (needRedeemVip) => {
   if (!selectedMatchmaker.value) return;
   try {
     if (needRedeemVip) {
-      await redeemVipApi({ referralCode: selectedMatchmaker.value.code });
-      await userStore.fetchProfile();
+      const redeemRes = await redeemVipApi({ referralCode: selectedMatchmaker.value.code });
+      const user = redeemRes.data?.user || redeemRes.user;
+      if (user) {
+        userStore.applyUser(user);
+      }
     }
     await createMatchRequestApi({
       targetUserId: profile.value.id,
@@ -252,6 +283,27 @@ const submitMatchRequest = async (needRedeemVip) => {
   padding: $spacing-sm $spacing-md;
   box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
   z-index: 10;
+}
+
+.skeleton-line {
+  height: 32rpx;
+  border-radius: $radius-sm;
+  background: linear-gradient(90deg, $color-bg 25%, #eef2f5 50%, $color-bg 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
+
+  &.short {
+    width: 40%;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 @media screen and (min-width: 520px) {

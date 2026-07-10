@@ -9,7 +9,7 @@
     </view>
 
     <view class="list-container">
-      <view class="user-card" v-for="item in list" :key="item.id" @click="goToDetail(item.id)">
+      <view class="user-card" v-for="item in list" :key="item.id" @click="goToDetail(item)">
         <image class="avatar" :src="item.photo || item.avatar || '/static/default-avatar.png'" mode="aspectFill" />
         <view class="info">
           <view class="header">
@@ -120,12 +120,22 @@ const resetFilters = () => {
   loadData(true);
 };
 
-const goToDetail = (id) => {
+const goToDetail = (item) => {
   if (!userStore.isLoggedIn) {
     uni.navigateTo({ url: '/pages/login/index' });
     return;
   }
-  uni.navigateTo({ url: `/pages/detail/index?id=${id}` });
+  const params = new URLSearchParams({
+    id: item.id,
+    name: item.name || '',
+    age: String(item.age || ''),
+    city: item.city || '',
+    job: item.job || '',
+    bio: item.bio || '',
+    photo: item.photo || item.avatar || '',
+    vip: item.vip ? '1' : '0'
+  });
+  uni.navigateTo({ url: `/pages/detail/index?${params.toString()}` });
 };
 
 onShow(() => {

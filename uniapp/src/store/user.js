@@ -65,9 +65,7 @@ export const useUserStore = defineStore("user", {
       this.age = user.age || 0;
       this.city = user.city || "";
       this.avatar = user.photo || user.avatar || "";
-      this.isVip = !!user.vip;
-      this.vipExpiresAt = user.vipExpiresAt || "";
-      this.profile = user;
+      this.applyUser(user);
 
       // 持久化
       try {
@@ -80,20 +78,26 @@ export const useUserStore = defineStore("user", {
       } catch (e) {}
     },
 
+    // 用接口返回的 user 对象同步全局状态（登录、刷新、VIP 兑换后复用）
+    applyUser(user) {
+      if (!user) return;
+      this.userId = user.id || this.userId;
+      this.name = user.name || this.name;
+      this.gender = user.gender || this.gender;
+      this.age = user.age || this.age;
+      this.city = user.city || this.city;
+      this.avatar = user.photo || user.avatar || this.avatar;
+      this.isVip = !!user.vip;
+      this.vipExpiresAt = user.vipExpiresAt || "";
+      this.profile = user;
+    },
+
     // 刷新用户资料
     async fetchProfile() {
       try {
         const res = await getMeApi();
         const user = res.data?.user || res.data || res;
-        this.userId = user.id || this.userId;
-        this.name = user.name || this.name;
-        this.gender = user.gender || this.gender;
-        this.age = user.age || this.age;
-        this.city = user.city || this.city;
-        this.avatar = user.photo || user.avatar || this.avatar;
-        this.isVip = !!user.vip;
-        this.vipExpiresAt = user.vipExpiresAt || "";
-        this.profile = user;
+        this.applyUser(user);
       } catch (e) {
         // 获取失败不影响使用
       }

@@ -641,15 +641,27 @@ async function readState() {
     return cloneState(stateCache);
   }
 
-  const agenciesRes = await pool.query("select raw from agencies order by id");
-  const matchmakersRes = await pool.query("select raw from matchmakers order by id");
-  const usersRes = await pool.query("select raw from users order by id");
-  const requestsRes = await pool.query("select raw from match_requests order by raw->>'createdAt' desc, id");
-  const chatThreadsRes = await pool.query("select raw from chat_threads order by coalesce(raw->>'lastMessageAt', raw->>'createdAt') desc, id");
-  const chatMessagesRes = await pool.query("select raw from chat_messages order by created_at asc, id");
-  const dealsRes = await pool.query("select raw from deals order by raw->>'createdAt' desc, id");
-  const promoCodesRes = await pool.query("select raw from promo_codes order by code");
-  const settingsRes = await pool.query("select data from app_settings where id = 'runtime'");
+  const [
+    agenciesRes,
+    matchmakersRes,
+    usersRes,
+    requestsRes,
+    chatThreadsRes,
+    chatMessagesRes,
+    dealsRes,
+    promoCodesRes,
+    settingsRes,
+  ] = await Promise.all([
+    pool.query("select raw from agencies order by id"),
+    pool.query("select raw from matchmakers order by id"),
+    pool.query("select raw from users order by id"),
+    pool.query("select raw from match_requests order by raw->>'createdAt' desc, id"),
+    pool.query("select raw from chat_threads order by coalesce(raw->>'lastMessageAt', raw->>'createdAt') desc, id"),
+    pool.query("select raw from chat_messages order by created_at asc, id"),
+    pool.query("select raw from deals order by raw->>'createdAt' desc, id"),
+    pool.query("select raw from promo_codes order by code"),
+    pool.query("select data from app_settings where id = 'runtime'"),
+  ]);
 
   const runtimeSettings = settingsRes.rows[0]?.data || {
     currentUserId: "u1",
