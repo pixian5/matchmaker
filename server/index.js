@@ -1968,7 +1968,7 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
           [matchRequest.id],
         ),
         pool.query(
-          "select id, raw from chat_threads where request_id = $1 and type = 'member_matchmaker' limit 1",
+          "select id, raw from chat_threads where request_id = $1 and type = 'member_matchmaker'",
           [matchRequest.id],
         ),
       ]);
