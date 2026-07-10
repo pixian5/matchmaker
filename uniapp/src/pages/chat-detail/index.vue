@@ -25,13 +25,13 @@
         @confirm="handleSend"
         confirm-type="send"
       />
-      <button class="btn-send" @click="handleSend" :class="{ disabled: !inputText || sending }">发送</button>
+      <button class="btn-send" @click="handleSend" :class="{ disabled: !canSend }">发送</button>
     </view>
   </view>
 </template>
 
 <script setup>
-import { nextTick, ref, onUnmounted } from 'vue';
+import { computed, nextTick, ref, onUnmounted } from 'vue';
 import { getChatMessagesApi, sendMessageApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
 import { addChatSocketListener, ensureChatSocket, removeChatSocketListener } from '@/utils/chatSocket';
@@ -48,9 +48,11 @@ const scrollTop = ref(0);
 const inputFocused = ref(false);
 const messageInputRef = ref(null);
 const tempMessageIds = ref(new Set());
+const pendingSendCount = ref(0);
 let pollTimer = null;
 
 const POLL_INTERVAL = 10000;
+const canSend = computed(() => Boolean(inputText.value.trim()));
 
 onLoad((options) => {
   if (options.threadId) {
@@ -111,7 +113,7 @@ const loadMessages = async () => {
 };
 
 const syncLatestMessages = async (force = false) => {
-  if (!threadId.value || (sending.value && !force)) return;
+  if (!threadId.value || (pendingSendCount.value > 0 && !force)) return;
   try {
     const res = await getChatMessagesApi(threadId.value);
     const newMessages = res.data?.list || [];
@@ -197,9 +199,9 @@ const restoreInputFocus = () => {
 };
 
 const handleSend = async () => {
-  if (!inputText.value || sending.value) return;
-  const content = inputText.value;
-  sending.value = true;
+  const content = inputText.value.trim();
+  if (!content) return;
+  pendingSendCount.value += 1;
   
   const tempId = Date.now().toString();
   tempMessageIds.value.add(tempId);
@@ -227,7 +229,7 @@ const handleSend = async () => {
     removeTempMessage(tempId);
     uni.showToast({ title: '发送失败', icon: 'none' });
   } finally {
-    sending.value = false;
+    pendingSendCount.value = Math.max(0, pendingSendCount.value - 1);
     restoreInputFocus();
   }
 };
