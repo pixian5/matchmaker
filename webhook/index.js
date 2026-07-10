@@ -60,6 +60,14 @@ const server = http.createServer((req, res) => {
     let payload;
     try { payload = JSON.parse(body); } catch { payload = {}; }
 
+    // 忽略 GitHub ping 事件
+    if (payload.hook_id && payload.zen && !payload.ref) {
+      log("收到 ping 事件，忽略");
+      res.writeHead(200);
+      res.end("Pong");
+      return;
+    }
+
     const ref = payload.ref || "";
     // 只处理 main 或 master 分支的推送
     if (ref && !ref.endsWith("/main") && !ref.endsWith("/master")) {

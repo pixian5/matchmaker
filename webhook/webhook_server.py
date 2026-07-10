@@ -125,6 +125,14 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
+        # 忽略 GitHub ping 事件
+        if "hook_id" in payload and "zen" in payload and "ref" not in payload:
+            logger.info("收到 ping 事件，忽略")
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Pong")
+            return
+
         ref = payload.get("ref", "")
         if ref and not (ref.endswith("/main") or ref.endswith("/master")):
             logger.info(f"忽略非主分支推送: {ref}")
