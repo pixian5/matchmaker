@@ -1510,12 +1510,15 @@ function showProfileDetail(profileId) {
 
   let actionHtml = "";
   if (existingRequest) {
+    const memberChatAction = existingRequest.memberChatEnabled
+      ? `<button class="secondary-button" id="profileContactMemberBtn" data-request-id="${existingRequest.id}" style="flex: 1; min-height: 36px; font-size: 12px; background: #ecfeff; border-color: rgba(15, 118, 110, 0.22); color: var(--teal-dark); margin-bottom: 0;" type="button">💬 与对方互聊</button>`
+      : `<button class="secondary-button" id="profileApplyMemberChatBtn" data-request-id="${existingRequest.id}" style="flex: 1; min-height: 36px; font-size: 12px; margin-bottom: 0;" type="button">申请聊天</button>`;
     actionHtml = `
       <div style="background: rgba(22, 163, 74, 0.05); border: 1px solid rgba(22, 163, 74, 0.2); padding: 12px; border-radius: 8px; text-align: left;">
         <span style="font-weight: bold; color: #16a34a; font-size: 13px; display: block; margin-bottom: 4px;">牵线进度：${existingRequest.status}</span>
         <div style="display: flex; gap: 8px; margin-top: 8px;">
           <button class="primary-button" id="profileContactMmBtn" data-request-id="${existingRequest.id}" style="flex: 1; min-height: 36px; font-size: 12px; margin-bottom: 0;" type="button">💬 联系红娘</button>
-          ${existingRequest.memberChatEnabled ? `<button class="secondary-button" id="profileContactMemberBtn" data-request-id="${existingRequest.id}" style="flex: 1; min-height: 36px; font-size: 12px; background: #ecfeff; border-color: rgba(15, 118, 110, 0.22); color: var(--teal-dark); margin-bottom: 0;" type="button">💬 与对方互聊</button>` : ""}
+          ${memberChatAction}
         </div>
       </div>
     `;
@@ -1670,6 +1673,9 @@ function renderRequests() {
         const memberChatStatus = request.memberChatEnabled
           ? `<div class="muted">会员互聊：已开启</div>`
           : `<div class="muted">会员互聊：等待红娘开通</div>`;
+        const memberChatAction = request.memberChatEnabled
+          ? `<button class="secondary-button size-sm" data-chat-with-member="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; background: #ecfeff; border-color: rgba(15, 118, 110, 0.22); color: var(--teal-dark); margin-bottom: 0;" type="button">💬 与对方互聊</button>`
+          : `<button class="secondary-button size-sm" data-apply-member-chat="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; margin-bottom: 0;" type="button">申请聊天</button>`;
         return `
           <article class="request-card">
             <span class="status-pill">${request.status}</span>
@@ -1679,7 +1685,7 @@ function renderRequests() {
             ${memberChatStatus}
             <div style="display: flex; gap: 8px; margin-top: 10px;">
               <button class="primary-button size-sm" data-chat-with-mm="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; margin-bottom: 0;" type="button">💬 联系红娘</button>
-              ${request.memberChatEnabled ? `<button class="secondary-button size-sm" data-chat-with-member="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; background: #ecfeff; border-color: rgba(15, 118, 110, 0.22); color: var(--teal-dark); margin-bottom: 0;" type="button">💬 与对方互聊</button>` : ""}
+              ${memberChatAction}
             </div>
           </article>
         `;
@@ -1708,8 +1714,9 @@ function renderMiniChatSections(user, requests) {
     const req = getRequestById(thread.requestId);
     return Boolean(req?.memberChatEnabled);
   });
+  const visibleThreads = [...mmThreads, ...groupThreads, ...memberThreads];
 
-  if (!activeMiniChatThreadId || !accessibleThreads.some((thread) => thread.id === activeMiniChatThreadId)) {
+  if (!activeMiniChatThreadId || !visibleThreads.some((thread) => thread.id === activeMiniChatThreadId)) {
     activeMiniChatThreadId = mmThreads[0]?.id || groupThreads[0]?.id || memberThreads[0]?.id || null;
   }
 
@@ -1755,6 +1762,7 @@ function renderMiniChatSections(user, requests) {
             <div class="request-card muted">
               <strong>${otherUser?.name || "会员"}</strong>
               <div>${request.memberChatEnabled ? "聊天线程生成中，请稍候刷新。" : "红娘开通后，这里会出现双方互聊入口。"}</div>
+              ${request.memberChatEnabled ? "" : `<button class="secondary-button size-sm" data-apply-member-chat="${request.id}" style="margin-top: 8px; width: auto; min-height: 34px;" type="button">申请聊天</button>`}
             </div>
           `);
           return cards;
@@ -1772,7 +1780,7 @@ function renderMiniChatSections(user, requests) {
       })
       .join("") || `<div class="request-card muted">暂无会员互聊会话。</div>`;
 
-  const activeThread = getThreadById(activeMiniChatThreadId);
+  const activeThread = visibleThreads.find((thread) => thread.id === activeMiniChatThreadId);
   if (!activeThread) {
     panel.style.display = "none";
     return;
@@ -2579,6 +2587,31 @@ async function sendMiniChatMessage(event) {
     saveState();
     renderAll();
   }
+}
+
+function openMatchmakerChatForRequest(requestId, user, presetMessage = "") {
+  const thread = getMatchmakerThreadForRequest(requestId, user.id);
+  if (!thread) {
+    showToast("未找到该聊天，请稍后刷新");
+    return;
+  }
+
+  activeMiniChatThreadId = thread.id;
+  renderAll();
+  const chatPanel = $("#miniChatPanel");
+  const input = $("#miniChatInput");
+  if (presetMessage && input) {
+    input.value = presetMessage;
+    input.focus();
+  }
+  if (chatPanel) {
+    chatPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function applyMemberChat(requestId, user) {
+  openMatchmakerChatForRequest(requestId, user, "我想申请开通和对方的聊天权限，请红娘审核。");
+  showToast("已打开红娘聊天，请发送申请");
 }
 
 async function sendMatchmakerChatMessage(event) {
@@ -3549,19 +3582,19 @@ function bindEvents() {
         modal.classList.remove("show");
       }
       navigate("/mini/requests");
-      setTimeout(() => {
-        const thread = getMatchmakerThreadForRequest(requestId, user.id);
-        if (thread) {
-          activeMiniChatThreadId = thread.id;
-          renderAll();
-          const chatPanel = $("#miniChatPanel");
-          if (chatPanel) {
-            chatPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-          }
-        } else {
-          showToast("未找到该聊天，请稍后刷新");
-        }
-      }, 100);
+      setTimeout(() => openMatchmakerChatForRequest(requestId, user), 100);
+      return;
+    }
+    const profileApplyMemberChatBtn = event.target.closest("#profileApplyMemberChatBtn");
+    if (profileApplyMemberChatBtn && user) {
+      const requestId = profileApplyMemberChatBtn.dataset.requestId;
+      const modal = $("#profileDetailModal");
+      if (modal) {
+        modal.style.display = "none";
+        modal.classList.remove("show");
+      }
+      navigate("/mini/requests");
+      setTimeout(() => applyMemberChat(requestId, user), 100);
       return;
     }
     const profileContactMemberBtn = event.target.closest("#profileContactMemberBtn");
@@ -3632,17 +3665,13 @@ function bindEvents() {
     const chatWithMmButton = event.target.closest("[data-chat-with-mm]");
     if (chatWithMmButton) {
       const requestId = chatWithMmButton.dataset.chatWithMm;
-      const thread = getMatchmakerThreadForRequest(requestId, user.id);
-      if (thread) {
-        activeMiniChatThreadId = thread.id;
-        renderAll();
-        const chatPanel = $("#miniChatPanel");
-        if (chatPanel) {
-          chatPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        }
-      } else {
-        showToast("未找到该聊天，请稍后刷新");
-      }
+      openMatchmakerChatForRequest(requestId, user);
+      return;
+    }
+
+    const applyMemberChatButton = event.target.closest("[data-apply-member-chat]");
+    if (applyMemberChatButton) {
+      applyMemberChat(applyMemberChatButton.dataset.applyMemberChat, user);
       return;
     }
 
