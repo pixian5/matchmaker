@@ -11,4 +11,9 @@ if [ -f "$SSH_KEY_PATH" ]; then
   ssh_args="$ssh_args -i $SSH_KEY_PATH"
 fi
 
-ssh $ssh_args "$REMOTE_HOST" "cd /opt/mediapeople && git fetch origin '$BRANCH' && git checkout '$BRANCH' && bash '$REMOTE_DEPLOY_SCRIPT'"
+if [ "$BRANCH" != "master" ]; then
+  echo "当前服务器自动部署脚本固定部署 master，暂不支持通过 remote-deploy.sh 切换到其他分支。" >&2
+  exit 1
+fi
+
+ssh $ssh_args "$REMOTE_HOST" "bash '$REMOTE_DEPLOY_SCRIPT'"
