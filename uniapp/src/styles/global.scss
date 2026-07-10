@@ -201,24 +201,39 @@ page {
   font-size: $font-sm;
 }
 
-/* H5 桌面预览时，聊天页保持手机宽度，避免输入栏和气泡被拉成整屏。 */
+/* H5 桌面预览时，所有小程序页面保持手机竖屏宽度。 */
 @media screen and (min-width: 520px) {
   body {
     background: linear-gradient(135deg, #dfe8eb 0%, #f6f8f9 100%);
   }
 
-  uni-page[data-page="pages/chat-detail/index"] {
-    max-width: 430px;
+  uni-app {
+    display: block;
+    width: 430px;
+    max-width: 100vw;
+    min-height: 100vh;
     margin: 0 auto;
-    overflow: hidden;
+    position: relative;
     background: $color-bg;
     box-shadow: 0 28px 90px rgba(30, 38, 51, 0.18);
   }
 
-  uni-page[data-page="pages/chat-detail/index"] .uni-page-head {
+  uni-page {
+    max-width: 430px;
+    margin: 0 auto;
+    overflow: hidden;
+    background: $color-bg;
+  }
+
+  uni-page .uni-page-head,
+  .uni-tabbar {
     left: 50% !important;
     width: 430px !important;
     max-width: 430px;
     transform: translateX(-50%);
+  }
+
+  .uni-tabbar {
+    right: auto !important;
   }
 }
