@@ -1559,6 +1559,7 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
       matchmakerThreadId: myMatchmakerThread?.id || null,
       memberChatEnabled: false,
       memberThreadId: null,
+      groupThreadId: null,
     },
     state: publicState(await readState()),
   });
@@ -1632,6 +1633,27 @@ app.patch("/api/matchmaker/requests/:id/approve-member-chat", requireAuth(["matc
     );
   }
 
+  const groupThreadRes = await pool.query(
+    "select id from chat_threads where request_id = $1 and type = 'matchmaker_group' limit 1",
+    [requestId]
+  );
+  if (groupThreadRes.rows.length === 0) {
+    const groupThread = buildMatchmakerGroupThread(req);
+    await pool.query(
+      `insert into chat_threads (id, type, request_id, status, participants, raw)
+       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+       on conflict (id) do nothing`,
+      [
+        groupThread.id,
+        groupThread.type,
+        groupThread.requestId,
+        groupThread.status,
+        JSON.stringify(groupThread.participants),
+        JSON.stringify(groupThread),
+      ]
+    );
+  }
+
   response.json({ request: req, state: publicState(await readState()) });
 });
 
@@ -1662,6 +1684,20 @@ app.patch("/api/matchmaker/requests/:id/member-chat", requireAuth(["matchmaker"]
         `insert into chat_threads (id, type, request_id, status, participants, raw)
          values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
         [memberThread.id, memberThread.type, memberThread.requestId, memberThread.status, JSON.stringify(memberThread.participants), JSON.stringify(memberThread)]
+      );
+    }
+
+    const groupThreadRes = await pool.query(
+      "select id from chat_threads where request_id = $1 and type = 'matchmaker_group' limit 1",
+      [requestId]
+    );
+    if (groupThreadRes.rows.length === 0) {
+      const groupThread = buildMatchmakerGroupThread(req);
+      await pool.query(
+        `insert into chat_threads (id, type, request_id, status, participants, raw)
+         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+         on conflict (id) do nothing`,
+        [groupThread.id, groupThread.type, groupThread.requestId, groupThread.status, JSON.stringify(groupThread.participants), JSON.stringify(groupThread)]
       );
     }
   }
@@ -1980,6 +2016,10 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
           break;
         }
       }
+      const groupThreadRes = await pool.query(
+        "select id from chat_threads where request_id = $1 and type = 'matchmaker_group' limit 1",
+        [matchRequest.id],
+      );
       userInfo.matchRequest = {
         id: matchRequest.id,
         status: matchRequest.status,
@@ -1987,6 +2027,7 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
         memberChatEnabled: matchRequest.memberChatEnabled,
         memberThreadId: memberThreadRes.rows[0]?.id || null,
         matchmakerThreadId: myMatchmakerThreadId,
+        groupThreadId: groupThreadRes.rows[0]?.id || null,
       };
     }
 

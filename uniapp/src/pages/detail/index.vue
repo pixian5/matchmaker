@@ -94,7 +94,7 @@ const isVipForSelectedMatchmaker = computed(() => {
 const hasMatchRequest = computed(() => !!profile.value?.matchRequest);
 const showGroupChatBtn = computed(() => {
   const mr = profile.value?.matchRequest;
-  return mr?.memberChatEnabled && mr?.memberThreadId;
+  return mr?.memberChatEnabled && mr?.groupThreadId;
 });
 
 const buildPreviewProfile = (options) => {
@@ -187,6 +187,7 @@ const submitMatchRequest = async (needRedeemVip) => {
           memberChatEnabled: requestData.memberChatEnabled || false,
           memberThreadId: requestData.memberThreadId || null,
           matchmakerThreadId: requestData.matchmakerThreadId || null,
+          groupThreadId: requestData.groupThreadId || null,
         },
       };
     }
@@ -206,7 +207,7 @@ const goToMatchmakerChat = () => {
 };
 
 const goToMemberChat = () => {
-  const threadId = profile.value?.matchRequest?.memberThreadId;
+  const threadId = profile.value?.matchRequest?.groupThreadId;
   if (!threadId) {
     uni.showToast({ title: '群聊未开启', icon: 'none' });
     return;
