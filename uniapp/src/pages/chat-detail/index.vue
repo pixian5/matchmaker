@@ -114,8 +114,21 @@ const mergeMessages = (newMessages) => {
   const merged = [...newMessages, ...pendingTempMessages];
 
   merged.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  messages.value = merged;
+  messages.value = merged.filter((msg, index, list) => list.findIndex((item) => item.id === msg.id) === index);
   tempMessageIds.value = new Set(pendingTempMessages.map((msg) => msg.id));
+};
+
+const removeTempMessage = (tempId) => {
+  tempMessageIds.value.delete(tempId);
+  messages.value = messages.value.filter((msg) => msg.id !== tempId);
+};
+
+const upsertMessage = (message) => {
+  if (!message?.id) return;
+  const nextMessages = messages.value.filter((msg) => msg.id !== message.id);
+  nextMessages.push(message);
+  nextMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  messages.value = nextMessages;
 };
 
 const scrollToBottom = () => {
@@ -151,15 +164,13 @@ const handleSend = async () => {
   try {
     const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
     const realMessage = res.message || res.data?.message;
-    await syncLatestMessages(true);
     if (realMessage) {
-      tempMessageIds.value.delete(tempId);
-      messages.value = messages.value.filter((msg) => msg.id !== tempId);
-      mergeMessages([...messages.value, realMessage]);
+      removeTempMessage(tempId);
+      upsertMessage(realMessage);
     }
+    await syncLatestMessages(true);
   } catch (error) {
-    tempMessageIds.value.delete(tempId);
-    messages.value = messages.value.filter(m => m.id !== tempId);
+    removeTempMessage(tempId);
     uni.showToast({ title: '发送失败', icon: 'none' });
   } finally {
     sending.value = false;
