@@ -12,7 +12,7 @@
       </view>
       <view class="form-group">
         <text class="form-label">密码</text>
-        <input class="form-input" v-model="form.password" type="password" placeholder="请输入密码" />
+        <input class="form-input" v-model="form.password" type="text" placeholder="请输入密码" />
       </view>
       <button class="btn-primary" @click="handleLogin" :class="{ disabled: loading }">
         {{ loading ? '登录中...' : '登录' }}

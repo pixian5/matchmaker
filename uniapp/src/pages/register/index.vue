@@ -30,11 +30,11 @@
       </view>
       <view class="form-group">
         <text class="form-label">密码</text>
-        <input class="form-input" v-model="form.password" type="password" placeholder="请输入至少6位密码" />
+        <input class="form-input" v-model="form.password" type="text" placeholder="请输入至少6位密码" />
       </view>
       <view class="form-group">
         <text class="form-label">确认密码</text>
-        <input class="form-input" v-model="form.passwordConfirm" type="password" placeholder="请再次输入密码" />
+        <input class="form-input" v-model="form.passwordConfirm" type="text" placeholder="请再次输入密码" />
       </view>
       
       <button class="btn-primary" @click="handleRegister" :class="{ disabled: loading }">
