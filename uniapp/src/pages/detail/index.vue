@@ -50,9 +50,19 @@
     </view>
     
     <view class="bottom-action safe-area-bottom">
-      <button class="btn-primary" @click="handleMatchRequest" :class="{ disabled: requesting }">
-        {{ requesting ? '申请中...' : '申请牵线' }}
-      </button>
+      <template v-if="hasMatchRequest">
+        <button v-if="showGroupChatBtn" class="btn-secondary" @click="goToMemberChat">
+          群聊
+        </button>
+        <button class="btn-primary" @click="goToMatchmakerChat">
+          联系红娘
+        </button>
+      </template>
+      <template v-else>
+        <button class="btn-primary" @click="handleMatchRequest" :class="{ disabled: requesting }">
+          {{ requesting ? '申请中...' : '申请牵线' }}
+        </button>
+      </template>
     </view>
   </view>
   <view v-else-if="loading" class="loading-wrapper">
@@ -80,6 +90,11 @@ const selectedMatchmakerLabel = computed(() => selectedMatchmaker.value ? `${sel
 const isVipForSelectedMatchmaker = computed(() => {
   const vipIds = userStore.profile?.vipMatchmakerIds || [];
   return selectedMatchmaker.value ? vipIds.includes(selectedMatchmaker.value.id) : false;
+});
+const hasMatchRequest = computed(() => !!profile.value?.matchRequest);
+const showGroupChatBtn = computed(() => {
+  const mr = profile.value?.matchRequest;
+  return mr?.memberChatEnabled && mr?.memberThreadId;
 });
 
 const buildPreviewProfile = (options) => {
@@ -157,14 +172,46 @@ const submitMatchRequest = async (needRedeemVip) => {
         userStore.applyUser(user);
       }
     }
-    await createMatchRequestApi({
+    const res = await createMatchRequestApi({
       targetUserId: profile.value.id,
       matchmakerId: selectedMatchmaker.value.id
     });
+    const requestData = res.data?.request || res.request;
+    if (requestData) {
+      profile.value = {
+        ...profile.value,
+        matchRequest: {
+          id: requestData.id,
+          status: requestData.status,
+          matchmakerId: requestData.matchmakerId,
+          memberChatEnabled: requestData.memberChatEnabled || false,
+          memberThreadId: requestData.memberThreadId || null,
+          matchmakerThreadId: requestData.matchmakerThreadId || null,
+        },
+      };
+    }
     uni.showToast({ title: '申请成功', icon: 'success' });
   } catch (error) {
     // handled by request interceptor
   }
+};
+
+const goToMatchmakerChat = () => {
+  const threadId = profile.value?.matchRequest?.matchmakerThreadId;
+  if (!threadId) {
+    uni.showToast({ title: '聊天会话不存在', icon: 'none' });
+    return;
+  }
+  uni.navigateTo({ url: `/pages/chat-detail/index?threadId=${threadId}` });
+};
+
+const goToMemberChat = () => {
+  const threadId = profile.value?.matchRequest?.memberThreadId;
+  if (!threadId) {
+    uni.showToast({ title: '群聊未开启', icon: 'none' });
+    return;
+  }
+  uni.navigateTo({ url: `/pages/chat-detail/index?threadId=${threadId}` });
 };
 </script>
 
@@ -283,6 +330,17 @@ const submitMatchRequest = async (needRedeemVip) => {
   padding: $spacing-sm $spacing-md;
   box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
   z-index: 10;
+  display: flex;
+  gap: $spacing-sm;
+
+  .btn-primary,
+  .btn-secondary {
+    flex: 1;
+    margin: 0;
+    height: 88rpx;
+    line-height: 88rpx;
+    border-radius: $radius-round;
+  }
 }
 
 .skeleton-line {

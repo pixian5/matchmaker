@@ -1549,7 +1549,19 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     );
   }
 
-  response.status(201).json({ request: matchReq, state: publicState(await readState()) });
+  const myMatchmakerThread = mmThreads.find((t) =>
+    t.participants.some((p) => p.role === "client" && p.id === userId)
+  );
+
+  response.status(201).json({
+    request: {
+      ...matchReq,
+      matchmakerThreadId: myMatchmakerThread?.id || null,
+      memberChatEnabled: false,
+      memberThreadId: null,
+    },
+    state: publicState(await readState()),
+  });
 });
 
 // 5. 红娘：分别标记已联系男方/女方
@@ -1943,6 +1955,40 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
       .map((id) => matchmakerMap.get(id))
       .filter(Boolean)
       .map(({ passwordHash: _passwordHash, ...matchmaker }) => matchmaker);
+
+    const matchRequestRes = await pool.query(
+      "select raw from match_requests where (from_user_id = $1 and to_user_id = $2) or (from_user_id = $2 and to_user_id = $1) order by created_at desc limit 1",
+      [userId, targetId],
+    );
+    if (matchRequestRes.rows.length > 0) {
+      const matchRequest = ensureRequestDefaults(matchRequestRes.rows[0].raw);
+      const [memberThreadRes, matchmakerThreadRes] = await Promise.all([
+        pool.query(
+          "select id from chat_threads where request_id = $1 and type = 'member_member' limit 1",
+          [matchRequest.id],
+        ),
+        pool.query(
+          "select id, raw from chat_threads where request_id = $1 and type = 'member_matchmaker' limit 1",
+          [matchRequest.id],
+        ),
+      ]);
+      let myMatchmakerThreadId = null;
+      for (const row of matchmakerThreadRes.rows) {
+        const thread = ensureThreadDefaults(row.raw);
+        if ((thread.participants || []).some((p) => p.role === "client" && p.id === userId)) {
+          myMatchmakerThreadId = thread.id;
+          break;
+        }
+      }
+      userInfo.matchRequest = {
+        id: matchRequest.id,
+        status: matchRequest.status,
+        matchmakerId: matchRequest.matchmakerId,
+        memberChatEnabled: matchRequest.memberChatEnabled,
+        memberThreadId: memberThreadRes.rows[0]?.id || null,
+        matchmakerThreadId: myMatchmakerThreadId,
+      };
+    }
 
     response.json({ code: 0, data: { user: userInfo }, message: "ok" });
   } catch (err) {
