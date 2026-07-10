@@ -1,6 +1,8 @@
 import express from "express";
+import { createServer } from "http";
 import pg from "pg";
 import crypto from "crypto";
+import { WebSocketServer } from "ws";
 
 const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
@@ -215,6 +217,9 @@ const pool = new Pool(
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+const server = createServer(app);
+const wss = new WebSocketServer({ noServer: true });
+const realtimeClients = new Map();
 
 function shouldInvalidateStateCache(sql) {
   if (typeof sql !== "string") return false;
@@ -534,6 +539,47 @@ function canAccessThread(thread, auth) {
   if (!thread || !auth) return false;
   if (auth.role === "admin") return true;
   return threadHasParticipant(thread, auth.role, auth.sub);
+}
+
+function getRealtimeClientKey(auth) {
+  return auth ? `${auth.role}:${auth.sub}` : "";
+}
+
+function registerRealtimeClient(socket, auth) {
+  const key = getRealtimeClientKey(auth);
+  if (!key) return;
+  const sockets = realtimeClients.get(key) || new Set();
+  sockets.add(socket);
+  realtimeClients.set(key, sockets);
+}
+
+function unregisterRealtimeClient(socket, auth) {
+  const key = getRealtimeClientKey(auth);
+  if (!key) return;
+  const sockets = realtimeClients.get(key);
+  if (!sockets) return;
+  sockets.delete(socket);
+  if (sockets.size === 0) {
+    realtimeClients.delete(key);
+  }
+}
+
+function sendRealtime(socket, payload) {
+  if (!socket || socket.readyState !== 1) return;
+  socket.send(JSON.stringify(payload));
+}
+
+function broadcastChatMessage(thread, message) {
+  if (!thread || !message) return;
+  const payload = { type: "chat_message", thread, message };
+  const recipientKeys = new Set(
+    (thread.participants || []).map((participant) => `${participant.role}:${participant.id}`),
+  );
+  recipientKeys.forEach((key) => {
+    const sockets = realtimeClients.get(key);
+    if (!sockets) return;
+    sockets.forEach((socket) => sendRealtime(socket, payload));
+  });
 }
 
 function getThreadOtherParticipant(thread, role, id) {
@@ -1741,6 +1787,7 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     [JSON.stringify(thread), threadId]
   );
 
+  broadcastChatMessage(thread, message);
   response.status(201).json({ message, thread });
 });
 
@@ -2207,6 +2254,35 @@ app.use((error, _request, response, _next) => {
 
 await initDatabase();
 
-app.listen(PORT, () => {
+server.on("upgrade", (request, socket, head) => {
+  try {
+    const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (url.pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    const payload = verifyToken((url.searchParams.get("token") || "").trim());
+    if (!payload || !["client", "matchmaker"].includes(payload.role)) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      ws.auth = payload;
+      registerRealtimeClient(ws, payload);
+      sendRealtime(ws, { type: "socket_ready" });
+      ws.on("close", () => {
+        unregisterRealtimeClient(ws, payload);
+      });
+      ws.on("error", () => {
+        unregisterRealtimeClient(ws, payload);
+      });
+    });
+  } catch (error) {
+    socket.destroy();
+  }
+});
+
+server.listen(PORT, () => {
   console.log(`mediapeople api listening on ${PORT}`);
 });

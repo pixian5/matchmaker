@@ -26,6 +26,7 @@
 import { nextTick, ref, onUnmounted } from 'vue';
 import { getChatMessagesApi, sendMessageApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
+import { addChatSocketListener, ensureChatSocket, removeChatSocketListener } from '@/utils/chatSocket';
 import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 
 const userStore = useUserStore();
@@ -39,7 +40,7 @@ const scrollTop = ref(0);
 const tempMessageIds = ref(new Set());
 let pollTimer = null;
 
-const POLL_INTERVAL = 1000;
+const POLL_INTERVAL = 10000;
 
 onLoad((options) => {
   if (options.threadId) {
@@ -52,15 +53,19 @@ onLoad((options) => {
 });
 
 onShow(() => {
+  addChatSocketListener(handleRealtimeMessage);
+  ensureChatSocket();
   syncLatestMessages(true);
   startPolling();
 });
 
 onHide(() => {
+  removeChatSocketListener(handleRealtimeMessage);
   stopPolling();
 });
 
 onUnmounted(() => {
+  removeChatSocketListener(handleRealtimeMessage);
   stopPolling();
 });
 
@@ -125,12 +130,31 @@ const removeTempMessage = (tempId) => {
   messages.value = messages.value.filter((msg) => msg.id !== tempId);
 };
 
+const reconcileTempMessage = (message) => {
+  const matchedTempMessage = messages.value.find((item) => {
+    if (!tempMessageIds.value.has(item.id)) return false;
+    if (item.senderId !== message.senderId || item.content !== message.content) return false;
+    return Math.abs(new Date(item.createdAt).getTime() - new Date(message.createdAt).getTime()) < 15000;
+  });
+  if (matchedTempMessage) {
+    removeTempMessage(matchedTempMessage.id);
+  }
+};
+
 const upsertMessage = (message) => {
   if (!message?.id) return;
   const nextMessages = messages.value.filter((msg) => msg.id !== message.id);
   nextMessages.push(message);
   nextMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
   messages.value = nextMessages;
+};
+
+const handleRealtimeMessage = (event) => {
+  if (event?.type !== 'chat_message') return;
+  if (event.message?.threadId !== threadId.value) return;
+  reconcileTempMessage(event.message);
+  upsertMessage(event.message);
+  scrollToBottom();
 };
 
 const scrollToBottom = () => {

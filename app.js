@@ -201,6 +201,10 @@ let state = structuredClone(seedState);
 let session = loadSession();
 let apiAvailable = false;
 let currentAdminSection = "overview";
+let chatRealtimeSocket = null;
+let chatRealtimeReconnectTimer = null;
+let chatRealtimeShouldReconnect = false;
+let chatRealtimeToken = "";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
@@ -435,6 +439,117 @@ function saveSession() {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
+function canUseChatRealtime() {
+  return Boolean(apiAvailable && session.token && ["client", "matchmaker"].includes(session.role));
+}
+
+function clearChatRealtimeReconnectTimer() {
+  if (chatRealtimeReconnectTimer) {
+    clearTimeout(chatRealtimeReconnectTimer);
+    chatRealtimeReconnectTimer = null;
+  }
+}
+
+function resetChatRealtimeSocket() {
+  if (chatRealtimeSocket) {
+    chatRealtimeSocket.onopen = null;
+    chatRealtimeSocket.onmessage = null;
+    chatRealtimeSocket.onclose = null;
+    chatRealtimeSocket.onerror = null;
+    try {
+      chatRealtimeSocket.close();
+    } catch (error) {
+      // ignore close errors
+    }
+  }
+  chatRealtimeSocket = null;
+}
+
+function getChatRealtimeUrl() {
+  if (!session.token) return "";
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${window.location.host}/ws?token=${encodeURIComponent(session.token)}`;
+}
+
+function scheduleChatRealtimeReconnect() {
+  if (!chatRealtimeShouldReconnect || chatRealtimeReconnectTimer) return;
+  chatRealtimeReconnectTimer = window.setTimeout(() => {
+    chatRealtimeReconnectTimer = null;
+    connectChatRealtime();
+  }, 1000);
+}
+
+function disconnectChatRealtime() {
+  chatRealtimeShouldReconnect = false;
+  chatRealtimeToken = "";
+  clearChatRealtimeReconnectTimer();
+  resetChatRealtimeSocket();
+}
+
+function reconcileRealtimeTempMessage(message) {
+  const tempMessage = state.chatMessages.find((item) => {
+    if (!String(item.id || "").startsWith("temp_")) return false;
+    if (item.threadId !== message.threadId) return false;
+    if (item.senderRole !== message.senderRole || item.senderId !== message.senderId) return false;
+    if (item.content !== message.content) return false;
+    return Math.abs(new Date(item.createdAt).getTime() - new Date(message.createdAt).getTime()) < 15000;
+  });
+  if (tempMessage) {
+    removeMessageById(tempMessage.id);
+  }
+}
+
+function handleChatRealtimeEvent(payload) {
+  if (payload?.type !== "chat_message" || !payload.message || !payload.thread) return;
+  reconcileRealtimeTempMessage(payload.message);
+  upsertThread(payload.thread);
+  upsertChatMessage(payload.message);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAll();
+}
+
+function connectChatRealtime() {
+  if (!canUseChatRealtime()) {
+    disconnectChatRealtime();
+    return;
+  }
+
+  const url = getChatRealtimeUrl();
+  if (
+    chatRealtimeSocket &&
+    chatRealtimeToken === session.token &&
+    (chatRealtimeSocket.readyState === WebSocket.OPEN || chatRealtimeSocket.readyState === WebSocket.CONNECTING)
+  ) {
+    return;
+  }
+
+  chatRealtimeShouldReconnect = true;
+  chatRealtimeToken = session.token;
+  clearChatRealtimeReconnectTimer();
+  resetChatRealtimeSocket();
+
+  chatRealtimeSocket = new WebSocket(url);
+  chatRealtimeSocket.onopen = () => {
+    logEvent("sys", "聊天实时通道已连接");
+  };
+  chatRealtimeSocket.onmessage = (event) => {
+    try {
+      handleChatRealtimeEvent(JSON.parse(event.data));
+    } catch (error) {
+      console.warn("解析聊天实时消息失败:", error);
+    }
+  };
+  chatRealtimeSocket.onerror = () => {
+    console.warn("聊天实时通道连接异常");
+  };
+  chatRealtimeSocket.onclose = () => {
+    resetChatRealtimeSocket();
+    if (chatRealtimeShouldReconnect) {
+      scheduleChatRealtimeReconnect();
+    }
+  };
+}
+
 function setAuthSession(role, id, token) {
   session.role = role;
   session.token = token || null;
@@ -446,6 +561,7 @@ function setAuthSession(role, id, token) {
     session.adminLoggedIn = true;
   }
   saveSession();
+  connectChatRealtime();
 }
 
 function authHeaders() {
@@ -459,6 +575,11 @@ function setCurrentUserId(id) {
     session.role = null;
   }
   saveSession();
+  if (!session.token) {
+    disconnectChatRealtime();
+  } else {
+    connectChatRealtime();
+  }
 }
 
 function setSelectedMatchmakerId(id) {
@@ -468,6 +589,11 @@ function setSelectedMatchmakerId(id) {
     session.role = null;
   }
   saveSession();
+  if (!session.token) {
+    disconnectChatRealtime();
+  } else {
+    connectChatRealtime();
+  }
 }
 
 function setAdminLoggedIn(loggedIn) {
@@ -477,6 +603,9 @@ function setAdminLoggedIn(loggedIn) {
     session.role = null;
   }
   saveSession();
+  if (session.role === "admin" || !session.token) {
+    disconnectChatRealtime();
+  }
 }
 
 async function loadRemoteState() {
@@ -549,6 +678,7 @@ async function initApp() {
   ensureStateDefaults(state);
   renderAll();
   handleRouting();
+  connectChatRealtime();
   window.addEventListener("popstate", handleRouting);
 
   // 开启多端自动轮询同步数据（每4秒）

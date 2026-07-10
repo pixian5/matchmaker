@@ -29,6 +29,7 @@
 import { ref, onUnmounted } from 'vue';
 import { getChatThreadsApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
+import { addChatSocketListener, ensureChatSocket, removeChatSocketListener } from '@/utils/chatSocket';
 import { onShow, onHide } from '@dcloudio/uni-app';
 
 const userStore = useUserStore();
@@ -36,7 +37,7 @@ const list = ref([]);
 const loading = ref(false);
 let pollTimer = null;
 
-const POLL_INTERVAL = 2000;
+const POLL_INTERVAL = 10000;
 
 const loadData = async () => {
   if (!userStore.isLoggedIn) return;
@@ -68,17 +69,42 @@ const stopPolling = () => {
 };
 
 onShow(() => {
+  addChatSocketListener(handleRealtimeMessage);
+  ensureChatSocket();
   loadData();
   startPolling();
 });
 
 onHide(() => {
+  removeChatSocketListener(handleRealtimeMessage);
   stopPolling();
 });
 
 onUnmounted(() => {
+  removeChatSocketListener(handleRealtimeMessage);
   stopPolling();
 });
+
+const handleRealtimeMessage = (event) => {
+  if (event?.type !== 'chat_message' || !event.thread?.id || !event.message) return;
+  const index = list.value.findIndex((item) => item.id === event.thread.id);
+  if (index === -1) {
+    loadData();
+    return;
+  }
+  const currentItem = list.value[index];
+  const nextItem = {
+    ...currentItem,
+    ...event.thread,
+    otherUser: currentItem.otherUser,
+    lastMessageAt: event.message.createdAt,
+    lastMessagePreview: event.message.content,
+  };
+  const nextList = [...list.value];
+  nextList.splice(index, 1);
+  nextList.unshift(nextItem);
+  list.value = nextList;
+};
 
 const goToLogin = () => {
   uni.navigateTo({ url: '/pages/login/index' });
