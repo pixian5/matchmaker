@@ -101,6 +101,6 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(PORT, "127.0.0.1", () => {
+server.listen(PORT, "0.0.0.0", () => {
   log(`Webhook 监听 http://127.0.0.1:${PORT}/webhook`);
 });

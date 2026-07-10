@@ -159,7 +159,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = http.server.HTTPServer(("127.0.0.1", PORT), WebhookHandler)
+    server = http.server.HTTPServer(("0.0.0.0", PORT), WebhookHandler)
     logger.info(f"Webhook 监听 http://127.0.0.1:{PORT}/webhook")
     logger.info(f"健康检查: http://127.0.0.1:{PORT}/health")
     logger.info(f"部署脚本: {DEPLOY_SCRIPT}")
