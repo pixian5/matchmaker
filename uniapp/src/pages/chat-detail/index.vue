@@ -23,10 +23,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { getChatMessagesApi, sendMessageApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
-import { onLoad } from '@dcloudio/uni-app';
+import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 
 const userStore = useUserStore();
 const threadId = ref('');
@@ -35,6 +35,10 @@ const inputText = ref('');
 const sending = ref(false);
 const loading = ref(true);
 const scrollToId = ref('');
+const tempMessageIds = ref(new Set());
+let pollTimer = null;
+
+const POLL_INTERVAL = 3000;
 
 onLoad((options) => {
   if (options.threadId) {
@@ -46,19 +50,96 @@ onLoad((options) => {
   }
 });
 
+onShow(() => {
+  startPolling();
+});
+
+onHide(() => {
+  stopPolling();
+});
+
+onUnmounted(() => {
+  stopPolling();
+});
+
+const startPolling = () => {
+  stopPolling();
+  if (threadId.value) {
+    pollTimer = setInterval(() => {
+      syncLatestMessages();
+    }, POLL_INTERVAL);
+  }
+};
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+};
+
 const loadMessages = async () => {
   loading.value = true;
   try {
     const res = await getChatMessagesApi(threadId.value);
-    messages.value = res.data?.list || [];
-    setTimeout(() => {
-      scrollToId.value = 'scroll-bottom';
-    }, 100);
+    const newMessages = res.data?.list || [];
+    mergeMessages(newMessages);
+    scrollToBottom();
   } catch (error) {
     //
   } finally {
     loading.value = false;
   }
+};
+
+const syncLatestMessages = async () => {
+  if (!threadId.value || sending.value) return;
+  try {
+    const res = await getChatMessagesApi(threadId.value);
+    const newMessages = res.data?.list || [];
+    if (newMessages.length > messages.value.length) {
+      mergeMessages(newMessages);
+      scrollToBottom();
+    }
+  } catch (error) {
+    //
+  }
+};
+
+const mergeMessages = (newMessages) => {
+  const existingIds = new Set(messages.value.map(m => m.id));
+  const tempIds = new Set(tempMessageIds.value);
+  
+  const merged = [];
+  const seenIds = new Set();
+  
+  for (const msg of newMessages) {
+    if (seenIds.has(msg.id)) continue;
+    seenIds.add(msg.id);
+    
+    if (tempIds.has(msg.id)) {
+      tempIds.delete(msg.id);
+      merged.push(msg);
+    } else if (!existingIds.has(msg.id)) {
+      merged.push(msg);
+    }
+  }
+  
+  for (const msg of messages.value) {
+    if (!seenIds.has(msg.id) && tempIds.has(msg.id)) {
+      merged.push(msg);
+    }
+  }
+  
+  merged.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  messages.value = merged;
+  tempMessageIds.value = tempIds;
+};
+
+const scrollToBottom = () => {
+  setTimeout(() => {
+    scrollToId.value = 'scroll-bottom';
+  }, 50);
 };
 
 const formatTime = (dateStr) => {
@@ -72,8 +153,8 @@ const handleSend = async () => {
   const content = inputText.value;
   sending.value = true;
   
-  // Optimistic UI
   const tempId = Date.now().toString();
+  tempMessageIds.value.add(tempId);
   const tempMessage = {
     id: tempId,
     content,
@@ -83,22 +164,13 @@ const handleSend = async () => {
   };
   messages.value.push(tempMessage);
   inputText.value = '';
-  setTimeout(() => {
-    scrollToId.value = 'msg-' + tempId;
-  }, 50);
+  scrollToBottom();
   
   try {
-    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
-    // 用服务器返回的真实消息替换临时消息
-    const realMessage = res.message || res.data?.message;
-    if (realMessage) {
-      const index = messages.value.findIndex(m => m.id === tempId);
-      if (index !== -1) {
-        messages.value[index] = realMessage;
-      }
-    }
+    await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
+    await syncLatestMessages();
   } catch (error) {
-    // 发送失败，移除临时消息
+    tempMessageIds.value.delete(tempId);
     messages.value = messages.value.filter(m => m.id !== tempId);
     uni.showToast({ title: '发送失败', icon: 'none' });
   } finally {

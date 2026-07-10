@@ -26,14 +26,17 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { getChatThreadsApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
-import { onShow } from '@dcloudio/uni-app';
+import { onShow, onHide } from '@dcloudio/uni-app';
 
 const userStore = useUserStore();
 const list = ref([]);
 const loading = ref(false);
+let pollTimer = null;
+
+const POLL_INTERVAL = 5000;
 
 const loadData = async () => {
   if (!userStore.isLoggedIn) return;
@@ -48,8 +51,33 @@ const loadData = async () => {
   }
 };
 
+const startPolling = () => {
+  stopPolling();
+  if (userStore.isLoggedIn) {
+    pollTimer = setInterval(() => {
+      loadData();
+    }, POLL_INTERVAL);
+  }
+};
+
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+};
+
 onShow(() => {
   loadData();
+  startPolling();
+});
+
+onHide(() => {
+  stopPolling();
+});
+
+onUnmounted(() => {
+  stopPolling();
 });
 
 const goToLogin = () => {
