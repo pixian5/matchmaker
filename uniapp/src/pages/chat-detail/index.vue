@@ -19,9 +19,10 @@
       <input
         ref="messageInputRef"
         class="msg-input"
-        v-model="inputText"
+        :value="inputText"
         :focus="inputFocused"
         placeholder="发送消息"
+        @input="handleInput"
         @confirm="handleSend"
         confirm-type="send"
       />
@@ -196,6 +197,10 @@ const restoreInputFocus = () => {
       }
     });
   });
+};
+
+const handleInput = (event) => {
+  inputText.value = event?.detail?.value ?? event?.target?.value ?? '';
 };
 
 const handleSend = async () => {
