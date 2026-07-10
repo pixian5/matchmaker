@@ -18,12 +18,14 @@ import subprocess
 import threading
 import logging
 import sys
+import urllib.request
 from datetime import datetime
 
 PORT = int(os.environ.get("WEBHOOK_PORT", 9000))
 SECRET = os.environ.get("WEBHOOK_SECRET", "").encode()
 DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/opt/mediapeople/deploy/auto-deploy.sh")
 LOG_FILE = "/var/log/mediapeople-webhook.log"
+BARK_KEY = os.environ.get("BARK_KEY", "RSyM7zPTvBfhNwf4RmMxic")
 
 # 配置日志同时输出到文件和标准输出
 logging.basicConfig(
@@ -38,6 +40,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 deploying = threading.Lock()
+
+
+def bark_notify(title: str, body: str):
+    """发送 Bark 推送通知（不抛异常，失败静默）"""
+    try:
+        data = json.dumps({
+            "title": title,
+            "body": body,
+            "group": "mediapeople-deploy",
+        }).encode()
+        req = urllib.request.Request(
+            f"https://api.day.app/{BARK_KEY}",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception:
+        pass
 
 
 def verify_signature(body: bytes, signature: str) -> bool:
@@ -61,16 +81,20 @@ def run_deploy():
         )
         if result.returncode == 0:
             logger.info("部署成功完成")
+            # 成功通知由 auto-deploy.sh 的 trap 负责，避免重复
         else:
             logger.error(f"部署脚本退出码: {result.returncode}")
+            # 失败通知由 auto-deploy.sh 的 trap 负责，避免重复
         if result.stdout:
             logger.info(f"stdout: {result.stdout.strip()}")
         if result.stderr:
             logger.warning(f"stderr: {result.stderr.strip()}")
     except subprocess.TimeoutExpired:
         logger.error("部署超时 (300s)")
+        bark_notify("mediapeople 部署超时", "部署脚本执行超过 300s 被强制终止")
     except Exception as e:
         logger.error(f"部署异常: {e}")
+        bark_notify("mediapeople 部署异常", f"webhook 执行部署脚本时出错: {e}")
     finally:
         deploying.release()
 

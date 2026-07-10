@@ -7,11 +7,24 @@ const PORT = Number(process.env.WEBHOOK_PORT || 9000);
 const SECRET = process.env.WEBHOOK_SECRET || "";
 const DEPLOY_SCRIPT = process.env.DEPLOY_SCRIPT || "/opt/mediapeople/deploy/auto-deploy.sh";
 const LOG_FILE = "/var/log/mediapeople-webhook.log";
+const BARK_KEY = process.env.BARK_KEY || "RSyM7zPTvBfhNwf4RmMxic";
 
 function log(msg) {
   const line = `[${new Date().toISOString()}] ${msg}\n`;
   process.stdout.write(line);
   try { fs.appendFileSync(LOG_FILE, line); } catch {}
+}
+
+function barkNotify(title, body) {
+  const data = JSON.stringify({ title, body, group: "mediapeople-deploy" });
+  const req = http.request(`https://api.day.app/${BARK_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
+    timeout: 10000,
+  });
+  req.on("error", () => {});
+  req.write(data);
+  req.end();
 }
 
 function verifySignature(body, signature) {
@@ -71,9 +84,16 @@ const server = http.createServer((req, res) => {
     exec(`bash ${DEPLOY_SCRIPT}`, { timeout: 300000 }, (error, stdout, stderr) => {
       deploying = false;
       if (error) {
-        log(`部署失败: ${error.message}`);
+        if (error.killed) {
+          log("部署超时 (300s)");
+          barkNotify("mediapeople 部署超时", "部署脚本执行超过 300s 被强制终止");
+        } else {
+          log(`部署失败: ${error.message}`);
+          // 失败通知由 auto-deploy.sh 的 trap 负责，避免重复
+        }
       } else {
         log("部署成功完成");
+        // 成功通知由 auto-deploy.sh 的 trap 负责，避免重复
       }
       if (stdout) log(`stdout: ${stdout.trim()}`);
       if (stderr) log(`stderr: ${stderr.trim()}`);
