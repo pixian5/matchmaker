@@ -370,6 +370,13 @@ function isGroupChatAllowed(request) {
   return Boolean(request?.memberChatEnabled);
 }
 
+function ensureThreadDefaults(thread) {
+  if (!thread) return thread;
+  if (thread.status === undefined) thread.status = "active";
+  if (!Array.isArray(thread.participants)) thread.participants = [];
+  return thread;
+}
+
 function getRequestUsers(request) {
   return {
     from: state.users.find((item) => item.id === request.fromUserId) || null,
