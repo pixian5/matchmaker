@@ -367,7 +367,7 @@ function getRequestContactStatus(request) {
 }
 
 function isGroupChatAllowed(request) {
-  return Boolean(request?.maleContacted && request?.femaleContacted);
+  return Boolean(request?.memberChatEnabled);
 }
 
 function getRequestUsers(request) {
@@ -2507,6 +2507,9 @@ async function toggleMemberChat(requestId, enabled) {
     request.memberChatEnabled = enabled;
     if (enabled && !state.chatThreads.some((thread) => thread.type === "member_member" && thread.requestId === requestId)) {
       createLocalThread("member_member", request);
+    }
+    if (enabled && !state.chatThreads.some((thread) => thread.type === "matchmaker_group" && thread.requestId === requestId)) {
+      createLocalThread("matchmaker_group", request);
     }
     saveState();
   }

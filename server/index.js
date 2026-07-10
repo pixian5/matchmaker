@@ -517,7 +517,7 @@ function getRequestContactStatus(request) {
 }
 
 function isGroupChatAllowed(request) {
-  return Boolean(request?.maleContacted && request?.femaleContacted);
+  return Boolean(request?.memberChatEnabled);
 }
 
 function ensureThreadDefaults(thread) {
