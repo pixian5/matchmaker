@@ -687,7 +687,16 @@ async function initApp() {
       try {
         const remoteState = await loadRemoteState();
         if (JSON.stringify(remoteState) !== JSON.stringify(state)) {
+          const remoteMessageIds = new Set(remoteState.chatMessages.map(m => m.id));
+          const localOnlyMessages = state.chatMessages.filter(m => !remoteMessageIds.has(m.id));
+          const remoteThreadIds = new Set(remoteState.chatThreads.map(t => t.id));
+          const localOnlyThreads = state.chatThreads.filter(t => !remoteThreadIds.has(t.id));
+
           state = remoteState;
+
+          localOnlyMessages.forEach(msg => upsertChatMessage(msg));
+          localOnlyThreads.forEach(thread => upsertThread(thread));
+
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
           renderAll();
           logEvent("sys", "自动同步：已拉取来自其他端的最新业务状态");

@@ -1806,6 +1806,7 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     await client.query("COMMIT");
     client.release();
     
+    invalidateStateCache();
     broadcastChatMessage(thread, message);
     response.status(201).json({ message, thread });
   } catch (error) {
