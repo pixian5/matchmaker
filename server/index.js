@@ -1757,6 +1757,7 @@ app.patch("/api/matchmaker/requests/:id/member-chat", requireAuth(["matchmaker"]
 app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"]), async (request, response) => {
   const threadId = request.params.id;
   const content = String(request.body?.content || "").trim();
+  const clientMsgNo = request.body?.clientMsgNo || null;
   if (!content) return response.status(400).json({ error: "content_required" });
 
   const threadRes = await pool.query("select raw from chat_threads where id = $1", [threadId]);
@@ -1791,6 +1792,9 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
       content,
       createdAt: new Date().toISOString(),
     };
+    if (clientMsgNo) {
+      message.clientMsgNo = clientMsgNo;
+    }
     thread.lastMessageAt = message.createdAt;
     thread.lastMessagePreview = content.slice(0, 80);
   

@@ -122,9 +122,10 @@ const syncLatestMessages = async (force = false) => {
   try {
     const res = await getChatMessagesApi(threadId.value);
     const newMessages = res.data?.list || [];
-    const shouldScroll = newMessages.length > messages.value.filter((msg) => !tempMessageIds.value.has(msg.id)).length;
+    const prevCount = messages.value.filter((msg) => !tempMessageIds.value.has(msg.id)).length;
     mergeMessages(newMessages);
-    if (shouldScroll) {
+    const currentCount = messages.value.filter((msg) => !tempMessageIds.value.has(msg.id)).length;
+    if (currentCount > prevCount) {
       scrollToBottom();
     }
   } catch (error) {
@@ -134,20 +135,41 @@ const syncLatestMessages = async (force = false) => {
 
 const compareMessages = (a, b) => {
   if (a.seq != null && b.seq != null) return a.seq - b.seq;
-  if (a.seq != null) return -1;
-  if (b.seq != null) return 1;
+  if (a.seq != null) return 1;
+  if (b.seq != null) return -1;
   return new Date(a.createdAt) - new Date(b.createdAt);
 };
 
 const mergeMessages = (newMessages) => {
-  const tempIds = new Set(tempMessageIds.value);
   const serverIds = new Set(newMessages.map((msg) => msg.id));
-  const pendingTempMessages = messages.value.filter((msg) => tempIds.has(msg.id) && !serverIds.has(msg.id));
-  const merged = [...newMessages, ...pendingTempMessages];
+  const serverClientMsgNos = new Set(
+    newMessages.filter((m) => m.clientMsgNo).map((m) => m.clientMsgNo)
+  );
+  const localOnlyMessages = messages.value.filter((msg) => {
+    if (serverIds.has(msg.id)) return false;
+    if (msg.clientMsgNo && serverClientMsgNos.has(msg.clientMsgNo)) return false;
+    return true;
+  });
 
+  const merged = [...newMessages, ...localOnlyMessages];
   merged.sort(compareMessages);
-  messages.value = merged.filter((msg, index, list) => list.findIndex((item) => item.id === msg.id) === index);
-  tempMessageIds.value = new Set(pendingTempMessages.map((msg) => msg.id));
+
+  const seenIds = new Set();
+  const seenClientMsgNos = new Set();
+  messages.value = merged.filter((msg) => {
+    if (msg.clientMsgNo) {
+      if (seenClientMsgNos.has(msg.clientMsgNo)) return false;
+      seenClientMsgNos.add(msg.clientMsgNo);
+    }
+    if (seenIds.has(msg.id)) return false;
+    seenIds.add(msg.id);
+    return true;
+  });
+
+  const tempIds = new Set(tempMessageIds.value);
+  tempMessageIds.value = new Set(
+    messages.value.filter((msg) => tempIds.has(msg.id)).map((msg) => msg.id)
+  );
 };
 
 const removeTempMessage = (tempId) => {
@@ -158,6 +180,7 @@ const removeTempMessage = (tempId) => {
 const reconcileTempMessage = (message) => {
   const matchedTempMessage = messages.value.find((item) => {
     if (!tempMessageIds.value.has(item.id)) return false;
+    if (message.clientMsgNo && item.clientMsgNo === message.clientMsgNo) return true;
     if (item.senderId !== message.senderId || item.content !== message.content) return false;
     return Math.abs(new Date(item.createdAt).getTime() - new Date(message.createdAt).getTime()) < 15000;
   });
@@ -168,7 +191,12 @@ const reconcileTempMessage = (message) => {
 
 const upsertMessage = (message) => {
   if (!message?.id) return;
-  const nextMessages = messages.value.filter((msg) => msg.id !== message.id);
+  reconcileTempMessage(message);
+  const nextMessages = messages.value.filter((msg) => {
+    if (msg.id === message.id) return false;
+    if (message.clientMsgNo && msg.clientMsgNo === message.clientMsgNo) return false;
+    return true;
+  });
   nextMessages.push(message);
   nextMessages.sort(compareMessages);
   messages.value = nextMessages;
@@ -208,35 +236,48 @@ const restoreInputFocus = () => {
   });
 };
 
+const generateClientMsgNo = () => {
+  return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+};
+
 const handleSend = async () => {
   const content = inputText.value.trim();
   if (!content) return;
   pendingSendCount.value += 1;
-  
-  const tempId = Date.now().toString();
+
+  const clientMsgNo = generateClientMsgNo();
+  const tempId = `temp_${clientMsgNo}`;
   tempMessageIds.value.add(tempId);
-  const maxSeq = messages.value.reduce((max, msg) => msg.seq > max ? msg.seq : max, 0);
+
+  const maxSeq = messages.value.reduce((max, msg) => {
+    if (msg.seq == null) return max;
+    return msg.seq > max ? msg.seq : max;
+  }, 0);
+
   const tempMessage = {
     id: tempId,
+    clientMsgNo,
     seq: maxSeq + 1,
     content,
     senderId: userStore.userId,
     senderRole: 'client',
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   };
   messages.value.push(tempMessage);
   inputText.value = '';
   scrollToBottom();
   restoreInputFocus();
-  
+
   try {
-    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
+    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId, clientMsgNo });
     const realMessage = res.message || res.data?.message;
     if (realMessage) {
-      removeTempMessage(tempId);
+      if (!realMessage.clientMsgNo) {
+        realMessage.clientMsgNo = clientMsgNo;
+      }
       upsertMessage(realMessage);
     }
-    await syncLatestMessages(true);
+    syncLatestMessages();
   } catch (error) {
     removeTempMessage(tempId);
     uni.showToast({ title: '发送失败', icon: 'none' });
