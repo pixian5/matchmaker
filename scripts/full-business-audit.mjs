@@ -213,7 +213,7 @@ await step("vip scoped visibility and match request", async () => {
   ids.requestId = created.data.request.id;
   const threads = created.data.state.chatThreads.filter((thread) => thread.requestId === ids.requestId);
   assert(threads.filter((thread) => thread.type === "member_matchmaker").length === 2, "missing 1v1 threads");
-  assert(threads.some((thread) => thread.type === "matchmaker_group" && thread.participants.length === 3), "missing group thread");
+  assert(!threads.some((thread) => thread.type === "matchmaker_group"), "group thread must wait for matchmaker approval");
 });
 
 await step("chat isolation and member chat gate", async () => {
@@ -228,21 +228,6 @@ await step("chat isolation and member chat gate", async () => {
     body: { content: `审计一对一${ts}` },
   });
 
-  const state = await req(BASE_ADMIN, "/state");
-  const group = state.data.chatThreads.find(
-    (thread) => thread.requestId === ids.requestId && thread.type === "matchmaker_group",
-  );
-  assert(group, "missing group thread");
-  const groupContent = `审计三方群${ts}`;
-  await req(BASE_MM, `/chat/threads/${group.id}/messages`, {
-    method: "POST",
-    token: mmToken,
-    body: { content: groupContent },
-  });
-  const afterGroup = await req(BASE_ADMIN, "/state");
-  const hits = afterGroup.data.chatMessages.filter((message) => message.content === groupContent);
-  assert(hits.length === 1 && hits[0].threadId === group.id, "group message polluted other thread");
-
   const enabled = await req(BASE_MM, `/matchmaker/requests/${ids.requestId}/member-chat`, {
     method: "PATCH",
     token: mmToken,
@@ -252,6 +237,19 @@ await step("chat isolation and member chat gate", async () => {
     (thread) => thread.requestId === ids.requestId && thread.type === "member_member",
   );
   assert(memberThread, "member_member not created");
+  const group = enabled.data.state.chatThreads.find(
+    (thread) => thread.requestId === ids.requestId && thread.type === "matchmaker_group",
+  );
+  assert(group && group.participants.length === 3, "group thread not created after approval");
+  const groupContent = `审计三方群${ts}`;
+  await req(BASE_MM, `/chat/threads/${group.id}/messages`, {
+    method: "POST",
+    token: mmToken,
+    body: { content: groupContent },
+  });
+  const afterGroup = await req(BASE_ADMIN, "/state");
+  const hits = afterGroup.data.chatMessages.filter((message) => message.content === groupContent);
+  assert(hits.length === 1 && hits[0].threadId === group.id, "group message polluted other thread");
   await req(BASE_CLIENT, `/chat/threads/${memberThread.id}/messages`, {
     method: "POST",
     token: maleToken,
