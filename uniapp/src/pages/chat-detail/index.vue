@@ -19,18 +19,15 @@
       <input
         ref="messageInputRef"
         class="msg-input"
-        :value="inputText"
+        v-model="inputText"
         :focus="inputFocused"
         placeholder="发送消息"
-        @input="handleInput"
         @confirm="handleSend"
         confirm-type="send"
       />
       <button
         class="btn-send"
         :class="{ disabled: !canSend }"
-        @mousedown.prevent
-        @touchstart.prevent
         @click="handleSend"
       >发送</button>
     </view>
@@ -194,36 +191,14 @@ const formatTime = (dateStr) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const restoreInputFocus = (forceControlledFocus = false) => {
-  if (isH5Runtime) {
-    if (forceControlledFocus) {
-      inputFocused.value = false;
-      nextTick(() => {
-        inputFocused.value = true;
-        if (typeof messageInputRef.value?.focus === 'function') {
-          messageInputRef.value.focus();
-        }
-      });
-      return;
-    }
-    if (typeof messageInputRef.value?.focus === 'function') {
-      messageInputRef.value.focus();
-    }
-    return;
-  }
+const restoreInputFocus = () => {
   inputFocused.value = false;
   nextTick(() => {
     inputFocused.value = true;
-    nextTick(() => {
-      if (typeof messageInputRef.value?.focus === 'function') {
-        messageInputRef.value.focus();
-      }
-    });
+    if (isH5Runtime && typeof messageInputRef.value?.focus === 'function') {
+      messageInputRef.value.focus();
+    }
   });
-};
-
-const handleInput = (event) => {
-  inputText.value = event?.detail?.value ?? event?.target?.value ?? '';
 };
 
 const handleSend = async () => {
@@ -243,7 +218,7 @@ const handleSend = async () => {
   messages.value.push(tempMessage);
   inputText.value = '';
   scrollToBottom();
-  restoreInputFocus(true);
+  restoreInputFocus();
   
   try {
     const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId });
