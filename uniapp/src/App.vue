@@ -1,8 +1,7 @@
 <script setup>
 import { onLaunch, onShow } from "@dcloudio/uni-app";
 import { useUserStore } from "./store/user";
-
-const SESSION_KEY = "matchmaker_session";
+import { getRoleForPath } from "./utils/session";
 
 // 页面路径所属的角色前缀
 const MATCHMAKER_PAGES = "/pages/matchmaker/";
@@ -58,7 +57,7 @@ function checkRedirect(userStore) {
 onLaunch(() => {
   // 启动时恢复登录态
   const userStore = useUserStore();
-  userStore.restoreSession();
+  userStore.restoreSession(getRoleForPath(getPagePath()));
   // 延迟执行角色页面校验，避免启动时页面栈为空
   setTimeout(() => {
     checkRedirect(userStore);
@@ -68,6 +67,10 @@ onLaunch(() => {
 onShow(() => {
   // 每次显示时校验角色与页面匹配
   const userStore = useUserStore();
+  const path = getPagePath();
+  if (!userStore.isLoggedIn) {
+    userStore.restoreSession(getRoleForPath(path));
+  }
   checkRedirect(userStore);
 });
 </script>

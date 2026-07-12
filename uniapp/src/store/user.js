@@ -4,8 +4,7 @@
  */
 import { defineStore } from "pinia";
 import { getMeApi } from "../api/client";
-
-const SESSION_KEY = "matchmaker_session";
+import { getCurrentRole, getSessionKey, readSession, removeSession } from "../utils/session";
 
 export const useUserStore = defineStore("user", {
   state: () => ({
@@ -80,9 +79,9 @@ export const useUserStore = defineStore("user", {
 
   actions: {
     // 从本地存储恢复登录态
-    restoreSession() {
+    restoreSession(role = getCurrentRole()) {
       try {
-        const session = uni.getStorageSync(SESSION_KEY);
+        const session = readSession(role);
         if (session && session.token) {
           this.isLoggedIn = true;
           this.token = session.token;
@@ -150,7 +149,7 @@ export const useUserStore = defineStore("user", {
 
       // 持久化
       try {
-        uni.setStorageSync(SESSION_KEY, payload);
+        uni.setStorageSync(getSessionKey(role), payload);
       } catch (e) {}
     },
 
@@ -210,7 +209,7 @@ export const useUserStore = defineStore("user", {
       this.adminId = "";
       this.adminName = "";
       try {
-        uni.removeStorageSync(SESSION_KEY);
+        removeSession(role);
       } catch (e) {}
 
       // 按角色跳转到对应登录页

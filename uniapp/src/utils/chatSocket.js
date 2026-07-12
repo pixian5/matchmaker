@@ -1,4 +1,4 @@
-const SESSION_KEY = "matchmaker_session";
+import { getCurrentRole, readSession } from "./session";
 const REMOTE_WS_HOST = "wss://uk.sbbz.tech:1314";
 const listeners = new Set();
 
@@ -19,7 +19,7 @@ function emit(event) {
 
 function getStoredSession() {
   try {
-    return uni.getStorageSync(SESSION_KEY) || null;
+    return readSession(getCurrentRole());
   } catch (error) {
     return null;
   }

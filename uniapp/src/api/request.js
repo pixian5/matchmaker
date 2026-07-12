@@ -3,7 +3,7 @@
  * 自动挂载 Token、统一错误处理、基础地址切换
  */
 
-const SESSION_KEY = "matchmaker_session";
+import { getCurrentRole, readSession, removeSession } from "../utils/session";
 
 // 线上 API 域名（小程序 / App 等非 H5 平台需要完整 HTTPS 地址）
 const REMOTE_API_BASE = "https://uk.sbbz.tech:1314/api";
@@ -58,7 +58,7 @@ export function request(options = {}) {
     // 获取 Token
     if (!noAuth) {
       try {
-        const session = uni.getStorageSync(SESSION_KEY);
+        const session = readSession(getCurrentRole());
         if (session && session.token) {
           header["Authorization"] = `Bearer ${session.token}`;
         }
@@ -94,10 +94,10 @@ export function request(options = {}) {
           // Token 失效，清除登录态并按角色跳转登录页
           let loginUrl = "/pages/login/index";
           try {
-            const session = uni.getStorageSync(SESSION_KEY);
+            const session = readSession(getCurrentRole());
             if (session?.role === "matchmaker") loginUrl = "/pages/matchmaker/login/index";
             if (session?.role === "admin") loginUrl = "/pages/admin/login/index";
-            uni.removeStorageSync(SESSION_KEY);
+            removeSession(getCurrentRole());
           } catch (e) {}
           uni.reLaunch({ url: loginUrl });
           reject(new Error(msg));
