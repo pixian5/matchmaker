@@ -142,16 +142,10 @@ else
 fi
 
 # webhook 服务自身变更时重启 systemd 服务，否则新代码不会生效
+WEBHOOK_NEEDS_RESTART=false
 if echo "$CHANGED_FILES" | grep -q '^webhook/'; then
-  log "检测到 webhook/ 变更，重启 mediapeople-webhook 服务..."
-  systemctl restart mediapeople-webhook 2>&1 | tee -a "$LOG_FILE"
-  sleep 1
-  if systemctl is-active --quiet mediapeople-webhook; then
-    log "mediapeople-webhook 已重启并运行"
-  else
-    log "ERROR: mediapeople-webhook 重启失败"
-    exit 1
-  fi
+  log "检测到 webhook/ 变更，将在部署完成后延迟重启 mediapeople-webhook 服务..."
+  WEBHOOK_NEEDS_RESTART=true
 fi
 
 # 重建 SSL version API / Nginx 容器（若有必要）。compose 配置变更必须 recreate，restart 不会应用 extra_hosts/ports 等容器配置。
@@ -172,3 +166,10 @@ for container in web web-mini web-matchmaker web-admin web-ssl web-mini-ssl web-
 done
 
 log "===== 部署完成 ====="
+
+# webhook 重启放在最后，延迟执行，让 EXIT trap 先发完 Bark 通知
+if [ "$WEBHOOK_NEEDS_RESTART" = "true" ]; then
+  log "2秒后延迟重启 mediapeople-webhook 服务..."
+  nohup bash -c 'sleep 2 && systemctl restart mediapeople-webhook' &>/dev/null &
+  disown
+fi
