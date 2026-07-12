@@ -11,8 +11,8 @@
 ```text
 统一入口：https://uk.sbbz.tech:21314/
 客户 H5：https://uk.sbbz.tech:21314/
-红娘端：https://uk.sbbz.tech:21314/pages/matchmaker/login/index
-管理后台：https://uk.sbbz.tech:21314/pages/admin/login/index
+红娘端：https://uk.sbbz.tech:21314/#/pages/matchmaker/login/index
+管理后台：https://uk.sbbz.tech:21314/#/pages/admin/login/index
 ```
 
 服务器仅对外暴露 `21314`，由单个 Nginx 网关复用 `/root/.acme.sh/sbbz.tech_ecc/` 下的现有证书。根目录挂载 uniapp H5 构建产物，客户、红娘和管理后台通过 uniapp 页面路由共用入口。
