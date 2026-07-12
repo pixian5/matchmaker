@@ -1781,6 +1781,15 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     );
   }
 
+  // 申请牵线时即创建三方群线程，符合《业务逻辑审计与防错清单》第六条
+  const groupThread = buildMatchmakerGroupThread(matchReq);
+  await pool.query(
+    `insert into chat_threads (id, type, request_id, status, participants, raw)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+     on conflict (id) do nothing`,
+    [groupThread.id, groupThread.type, groupThread.requestId, groupThread.status, JSON.stringify(groupThread.participants), JSON.stringify(groupThread)]
+  );
+
   const myMatchmakerThread = mmThreads.find((t) =>
     t.participants.some((p) => p.role === "client" && p.id === userId)
   );
@@ -1791,7 +1800,7 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
       matchmakerThreadId: myMatchmakerThread?.id || null,
       memberChatEnabled: false,
       memberThreadId: null,
-      groupThreadId: null,
+      groupThreadId: groupThread.id,
     },
     state: publicState(await readState()),
   });
