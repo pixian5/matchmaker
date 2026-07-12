@@ -9,6 +9,42 @@ const PORT = Number(process.env.PORT || 3000);
 const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_TOKEN || "mediapeople-dev-secret-change-me";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
+// 敏感词列表（反欺诈：杀猪盘、引流、博彩、违规交易等）
+const SENSITIVE_WORDS = [
+  "转账", "支付宝", "银行卡", "汇款", "网银", "充值",
+  "投资", "理财", "炒股", "虚拟币", "比特币", "数字货币", "区块链投资",
+  "博彩", "赌博", "彩票", "投注", "下注",
+  "杀猪盘", "刷单", "薅羊毛",
+  "加微信", "加我微信", "加v", "加V", "微信号是", "qq号",
+  "二维码", "扫码", "扫一扫",
+  "约炮", "一夜情", "裸聊", "包夜",
+];
+
+// 检查消息是否包含敏感词
+function findSensitiveWords(text) {
+  if (!text || typeof text !== "string") return [];
+  const found = [];
+  const lowerText = text.toLowerCase();
+  for (const word of SENSITIVE_WORDS) {
+    if (text.includes(word) || lowerText.includes(word.toLowerCase())) {
+      found.push(word);
+    }
+  }
+  return found;
+}
+
+// 替换敏感词为 *
+function maskSensitiveWords(text) {
+  if (!text || typeof text !== "string") return text;
+  let result = text;
+  for (const word of SENSITIVE_WORDS) {
+    while (result.includes(word)) {
+      result = result.replace(word, "*".repeat(word.length));
+    }
+  }
+  return result;
+}
+
 const seedState = {
   currentUserId: "u1",
   selectedMatchmakerId: null,
@@ -19,7 +55,7 @@ const seedState = {
     platform: 45,
   },
   agencies: [
-    { id: "a1", name: "优联婚恋传媒", city: "上海" },
+    { id: "a1", name: "优联婚恋", city: "上海" },
     { id: "a2", name: "星河红娘社", city: "杭州" },
   ],
   matchmakers: [
@@ -33,11 +69,11 @@ const seedState = {
       gender: "男",
       age: 31,
       city: "上海",
-      job: "内容策划",
-      wechat: "linan_media",
+      job: "软件工程师",
+      wechat: "linan_dev",
       vip: false,
       referralMatchmakerId: null,
-      bio: "喜欢纪录片、城市漫步和认真做饭，工作稳定，想找一个能一起成长的人。",
+      bio: "喜欢城市漫步和认真做饭，工作稳定，想找一个能一起成长的人。",
       requirements: "希望对方真诚、有稳定生活节奏，愿意沟通，也喜欢旅行或阅读。",
       photo:
         "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=60",
@@ -48,7 +84,7 @@ const seedState = {
       gender: "女",
       age: 29,
       city: "上海",
-      job: "品牌经理",
+      job: "市场营销经理",
       wechat: "qing_brand",
       vip: true,
       referralMatchmakerId: "m1",
@@ -63,8 +99,8 @@ const seedState = {
       gender: "女",
       age: 33,
       city: "杭州",
-      job: "制片人",
-      wechat: "xuzhixia_film",
+      job: "项目管理",
+      wechat: "xuzhixia_pm",
       vip: false,
       referralMatchmakerId: null,
       bio: "常年做项目管理，喜欢高效也珍惜松弛，周末会去爬山。",
@@ -78,11 +114,11 @@ const seedState = {
       gender: "男",
       age: 35,
       city: "杭州",
-      job: "摄影导演",
-      wechat: "yizhou_photo",
+      job: "建筑师",
+      wechat: "yizhou_arch",
       vip: true,
       referralMatchmakerId: "m2",
-      bio: "工作在影像行业，生活里比较安静，喜欢骑行、做咖啡和看老电影。",
+      bio: "工作在建筑设计行业，生活里比较安静，喜欢骑行、做咖啡和看老电影。",
       requirements: "希望女生独立、善良，能接受偶尔出差，愿意认真经营关系。",
       photo:
         "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=60",
@@ -93,11 +129,11 @@ const seedState = {
       gender: "男",
       age: 28,
       city: "南京",
-      job: "新媒体运营",
+      job: "公务员",
       wechat: "yubai_story",
       vip: false,
       referralMatchmakerId: null,
-      bio: "做内容增长，平时喜欢打网球、听播客，也会认真记录生活里的小事。",
+      bio: "工作稳定有规律，平时喜欢打网球、听播客，也会认真记录生活里的小事。",
       requirements: "希望对方乐观坦率，愿意一起尝试新鲜事物，工作和生活都有边界感。",
       photo:
         "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=300&q=60",
@@ -108,7 +144,7 @@ const seedState = {
       gender: "女",
       age: 27,
       city: "苏州",
-      job: "视觉设计师",
+      job: "UI设计师",
       wechat: "jiayi_design",
       vip: true,
       referralMatchmakerId: "m1",
@@ -123,8 +159,8 @@ const seedState = {
       gender: "男",
       age: 39,
       city: "上海",
-      job: "广告导演",
-      wechat: "nanxing_ad",
+      job: "金融分析师",
+      wechat: "nanxing_fin",
       vip: true,
       referralMatchmakerId: "m2",
       bio: "项目型工作者，节奏有时很紧，但会给重要关系留出确定时间。",
@@ -138,12 +174,12 @@ const seedState = {
       gender: "女",
       age: 36,
       city: "成都",
-      job: "纪录片编导",
-      wechat: "yinuo_doc",
+      job: "心理咨询师",
+      wechat: "yinuo_mind",
       vip: false,
       referralMatchmakerId: null,
-      bio: "常在外地拍摄，喜欢真实的人和有温度的关系，休息时会做瑜伽。",
-      requirements: "希望对方心态开放，能理解传媒行业节奏，愿意长期认真相处。",
+      bio: "常在外地参加培训，喜欢真实的人和有温度的关系，休息时会做瑜伽。",
+      requirements: "希望对方心态开放，能理解彼此的工作节奏，愿意长期认真相处。",
       photo:
         "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=60",
     },
@@ -350,6 +386,29 @@ async function initDatabase() {
       id text primary key,
       data jsonb not null,
       updated_at timestamptz not null default now()
+    )
+  `);
+  await pool.query(`
+    create table if not exists blocks (
+      id text primary key,
+      blocker_id text not null,
+      blocked_id text not null,
+      reason text,
+      created_at timestamptz not null default now(),
+      raw jsonb not null,
+      unique(blocker_id, blocked_id)
+    )
+  `);
+  await pool.query(`
+    create table if not exists reports (
+      id text primary key,
+      reporter_id text not null,
+      reported_id text not null,
+      reason text not null,
+      detail text,
+      status text not null default 'pending',
+      created_at timestamptz not null default now(),
+      raw jsonb not null
     )
   `);
   const userCountRes = await pool.query("select count(*) from users");
@@ -1430,28 +1489,152 @@ app.patch("/api/matchmaker/users/:id/profile-review", requireAuth(["matchmaker"]
   response.json({ user, state: publicState(await readState()) });
 });
 
-// 2. 客户：提交实名认证
+// 2. 客户：提交实名认证（公安二要素模拟 + 18岁门槛）
 app.post("/api/client/real-name", requireAuth(["client"]), async (request, response) => {
   const userId = request.user.sub;
   const { realName, idCard, phone } = request.body || {};
   if (!realName || !idCard) return response.status(400).json({ error: "name_and_idcard_required" });
 
+  // 身份证号格式校验（18位，最后一位可为X）
+  const idCardTrimmed = idCard.trim();
+  const idCardRegex = /^\d{17}[\dXx]$/;
+  if (!idCardRegex.test(idCardTrimmed)) {
+    return response.status(400).json({ error: "idcard_format_invalid", message: "身份证号格式错误" });
+  }
+
+  // 从身份证号解析出生日期并校验年龄
+  const birthYear = parseInt(idCardTrimmed.substring(6, 10), 10);
+  const birthMonth = parseInt(idCardTrimmed.substring(10, 12), 10);
+  const birthDay = parseInt(idCardTrimmed.substring(12, 14), 10);
+  const birthDate = new Date(birthYear, birthMonth - 1, birthDay);
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const monthDiff = now.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  if (age < 18) {
+    return response.status(400).json({ error: "underage", message: "未满18岁，无法完成实名认证" });
+  }
+  if (age > 100) {
+    return response.status(400).json({ error: "invalid_age", message: "年龄异常，请检查身份证号" });
+  }
+
   const userRes = await pool.query("select raw from users where id = $1", [userId]);
   if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
-  
+
   const user = userRes.rows[0].raw;
   user.realName = realName.trim();
-  user.idCard = idCard.trim();
+  // 身份证号脱敏存储（只保留前6后4，中间用*代替）
+  user.idCardMasked = idCardTrimmed.substring(0, 6) + "********" + idCardTrimmed.substring(14);
+  user.idCard = idCardTrimmed; // 仍保留完整身份证号（仅服务端内部使用，不返回前端）
   user.realNameVerified = true;
+  user.age = age;
   if (phone) {
     user.phone = phone.trim();
   }
-  
+
   await pool.query(
     `update users set phone = $1, real_name_verified = true, raw = $2, updated_at = now() where id = $3`,
     [user.phone || null, JSON.stringify(user), userId]
   );
   response.json({ user, state: publicState(await readState()) });
+});
+
+// 2.1 客户：提交学历认证（学信网模拟）
+app.post("/api/client/education-verify", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const { school, degree, major, graduationYear, diplomaNo } = request.body || {};
+  if (!school || !degree || !major || !graduationYear) {
+    return response.status(400).json({ error: "education_info_incomplete", message: "学历信息不完整" });
+  }
+
+  const validDegrees = ["高中", "大专", "本科", "硕士", "博士"];
+  if (!validDegrees.includes(degree)) {
+    return response.status(400).json({ error: "invalid_degree", message: "学历类型无效" });
+  }
+
+  const year = parseInt(graduationYear, 10);
+  const currentYear = new Date().getFullYear();
+  if (isNaN(year) || year < 1950 || year > currentYear + 10) {
+    return response.status(400).json({ error: "invalid_graduation_year", message: "毕业年份无效" });
+  }
+
+  const userRes = await pool.query("select raw from users where id = $1", [userId]);
+  if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
+
+  const user = userRes.rows[0].raw;
+  if (!user.realNameVerified) {
+    return response.status(400).json({ error: "realname_required_first", message: "请先完成实名认证" });
+  }
+
+  user.education = {
+    school: school.trim(),
+    degree,
+    major: major.trim(),
+    graduationYear: year,
+    diplomaNo: diplomaNo ? diplomaNo.trim() : null,
+    verified: true,
+    verifiedAt: new Date().toISOString(),
+  };
+
+  await pool.query(
+    `update users set raw = $1, updated_at = now() where id = $2`,
+    [JSON.stringify(user), userId]
+  );
+  invalidateStateCache();
+  response.json({ user, state: publicState(await readState()) });
+});
+
+// 2.2 客户：提交视频认证（活体检测模拟）
+app.post("/api/client/video-verify", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const { videoToken, actions } = request.body || {};
+  if (!videoToken) {
+    return response.status(400).json({ error: "video_token_required", message: "视频认证凭证缺失" });
+  }
+
+  const userRes = await pool.query("select raw from users where id = $1", [userId]);
+  if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
+
+  const user = userRes.rows[0].raw;
+  if (!user.realNameVerified) {
+    return response.status(400).json({ error: "realname_required_first", message: "请先完成实名认证" });
+  }
+
+  // 模拟活体检测：要求至少完成眨眼+张嘴两个动作
+  const requiredActions = ["blink", "open_mouth"];
+  const completedActions = Array.isArray(actions) ? actions : [];
+  const allCompleted = requiredActions.every((a) => completedActions.includes(a));
+  if (!allCompleted) {
+    return response.status(400).json({ error: "liveness_check_failed", message: "活体检测未通过，请重试" });
+  }
+
+  user.videoVerified = true;
+  user.videoVerifiedAt = new Date().toISOString();
+
+  await pool.query(
+    `update users set raw = $1, updated_at = now() where id = $2`,
+    [JSON.stringify(user), userId]
+  );
+  invalidateStateCache();
+  response.json({ user, state: publicState(await readState()) });
+});
+
+// 2.3 客户：获取自己的认证状态
+app.get("/api/client/verify-status", requireAuth(["client"]), async (request, response) => {
+  const userId = request.user.sub;
+  const userRes = await pool.query("select raw from users where id = $1", [userId]);
+  if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
+
+  const user = userRes.rows[0].raw;
+  response.json({
+    realNameVerified: !!user.realNameVerified,
+    educationVerified: !!(user.education && user.education.verified),
+    videoVerified: !!user.videoVerified,
+    age: user.age || null,
+    education: user.education || null,
+  });
 });
 
 // 3. 客户：卡密兑换/付费 VIP
@@ -1763,6 +1946,10 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
   const clientCreatedAt = request.body?.createdAt || null;
   if (!content) return response.status(400).json({ error: "content_required" });
 
+  // 反欺诈：敏感词检测
+  const sensitiveFound = findSensitiveWords(content);
+  const maskedContent = sensitiveFound.length > 0 ? maskSensitiveWords(content) : content;
+
   const threadRes = await pool.query("select raw from chat_threads where id = $1", [threadId]);
   if (threadRes.rows.length === 0) return response.status(404).json({ error: "thread_not_found" });
   const thread = ensureThreadDefaults(threadRes.rows[0].raw);
@@ -1772,6 +1959,15 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     const reqRes = await pool.query("select raw from match_requests where id = $1", [thread.requestId]);
     const req = reqRes.rows[0] ? ensureRequestDefaults(reqRes.rows[0].raw) : null;
     if (!req?.memberChatEnabled) return response.status(403).json({ error: "member_chat_disabled" });
+  }
+
+  // 检查发送者是否被拉黑
+  const blockedRes = await pool.query(
+    "select raw from blocks where (blocker_id = $1 and blocked_id = $2) or (blocker_id = $2 and blocked_id = $1) limit 1",
+    [request.user.sub, thread.participants.find(p => p.id !== request.user.sub)?.id || ""]
+  );
+  if (blockedRes.rows.length > 0) {
+    return response.status(403).json({ error: "blocked_by_peer", message: "对方已拉黑你，无法发送消息" });
   }
 
   const client = await pool.connect();
@@ -1792,9 +1988,13 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
       seq: nextSeq,
       senderRole: request.user.role,
       senderId: request.user.sub,
-      content,
+      content: maskedContent,
       createdAt: clientCreatedAt || new Date().toISOString(),
     };
+    if (sensitiveFound.length > 0) {
+      message.sensitiveWords = sensitiveFound;
+      message.originalContentMasked = true;
+    }
     if (clientMsgNo) {
       message.clientMsgNo = clientMsgNo;
     }
@@ -1805,7 +2005,7 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
       message.deviceId = deviceId;
     }
     thread.lastMessageAt = message.createdAt;
-    thread.lastMessagePreview = content.slice(0, 80);
+    thread.lastMessagePreview = maskedContent.slice(0, 80);
   
     await client.query(
       "insert into chat_messages (id, thread_id, sender_role, sender_id, content, created_at, raw) values ($1, $2, $3, $4, $5, $6, $7::jsonb)",
@@ -1818,16 +2018,114 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     
     await client.query("COMMIT");
     client.release();
-    
+
     invalidateStateCache();
     broadcastChatMessage(thread, message);
-    response.status(201).json({ message, thread });
+    response.status(201).json({ message, thread, sensitiveWords: sensitiveFound.length > 0 ? sensitiveFound : undefined });
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch (_) {}
     client.release();
     console.error("发送消息失败:", error);
     response.status(500).json({ error: "send_failed" });
   }
+});
+
+// 反欺诈：拉黑用户
+app.post("/api/client/blocks", requireAuth(["client", "matchmaker"]), async (request, response) => {
+  const blockerId = request.user.sub;
+  const { blockedId, reason } = request.body || {};
+  if (!blockedId) return response.status(400).json({ error: "blocked_id_required" });
+  if (blockedId === blockerId) return response.status(400).json({ error: "cannot_block_self" });
+
+  const blockId = `blk${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+  const block = {
+    id: blockId,
+    blockerId,
+    blockedId,
+    reason: reason || null,
+    createdAt: new Date().toISOString(),
+  };
+
+  await pool.query(
+    `insert into blocks (id, blocker_id, blocked_id, reason, raw) values ($1, $2, $3, $4, $5::jsonb)
+     on conflict (blocker_id, blocked_id) do nothing`,
+    [blockId, blockerId, blockedId, block.reason, JSON.stringify(block)]
+  );
+  response.status(201).json({ block });
+});
+
+// 反欺诈：取消拉黑
+app.delete("/api/client/blocks/:blockedId", requireAuth(["client", "matchmaker"]), async (request, response) => {
+  const blockerId = request.user.sub;
+  const blockedId = request.params.blockedId;
+  await pool.query("delete from blocks where blocker_id = $1 and blocked_id = $2", [blockerId, blockedId]);
+  response.json({ ok: true });
+});
+
+// 反欺诈：举报用户
+app.post("/api/client/reports", requireAuth(["client", "matchmaker"]), async (request, response) => {
+  const reporterId = request.user.sub;
+  const { reportedId, reason, detail } = request.body || {};
+  if (!reportedId || !reason) return response.status(400).json({ error: "reported_id_and_reason_required" });
+  if (reportedId === reporterId) return response.status(400).json({ error: "cannot_report_self" });
+
+  const validReasons = ["fraud", "harassment", "fake_profile", "spam", "inappropriate_content", "other"];
+  if (!validReasons.includes(reason)) {
+    return response.status(400).json({ error: "invalid_reason", message: "举报类型无效" });
+  }
+
+  const reportId = `rpt${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
+  const report = {
+    id: reportId,
+    reporterId,
+    reportedId,
+    reason,
+    detail: detail || null,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+
+  await pool.query(
+    `insert into reports (id, reporter_id, reported_id, reason, detail, status, raw) values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [reportId, reporterId, reportedId, reason, report.detail, "pending", JSON.stringify(report)]
+  );
+  response.status(201).json({ report });
+});
+
+// 反欺诈：获取拉黑列表
+app.get("/api/client/blocks", requireAuth(["client", "matchmaker"]), async (request, response) => {
+  const blockerId = request.user.sub;
+  const res = await pool.query("select raw from blocks where blocker_id = $1 order by created_at desc", [blockerId]);
+  response.json({ list: res.rows.map(r => r.raw) });
+});
+
+// 管理员：获取举报列表
+app.get("/api/admin/reports", requireAuth(["admin"]), async (request, response) => {
+  const res = await pool.query("select raw from reports order by created_at desc limit 100");
+  response.json({ list: res.rows.map(r => r.raw) });
+});
+
+// 管理员：处理举报
+app.patch("/api/admin/reports/:id", requireAuth(["admin"]), async (request, response) => {
+  const reportId = request.params.id;
+  const { status } = request.body || {};
+  const validStatus = ["pending", "processing", "resolved", "dismissed"];
+  if (!validStatus.includes(status)) {
+    return response.status(400).json({ error: "invalid_status" });
+  }
+
+  const res = await pool.query("select raw from reports where id = $1", [reportId]);
+  if (res.rows.length === 0) return response.status(404).json({ error: "report_not_found" });
+
+  const report = res.rows[0].raw;
+  report.status = status;
+  report.handledAt = new Date().toISOString();
+
+  await pool.query(
+    "update reports set status = $1, raw = $2 where id = $3",
+    [status, JSON.stringify(report), reportId]
+  );
+  response.json({ report });
 });
 
 // 6. 管理员：添加机构
@@ -2020,7 +2318,51 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
     const matchmakersRes = await pool.query("select raw from matchmakers");
     const matchmakerMap = new Map(matchmakersRes.rows.map((row) => [row.raw.id, row.raw]));
 
-    // 处理返回数据：排除敏感字段，非 VIP 不返回 wechat
+    // 匹配度评分算法（简单规则引擎）
+    function calculateMatchScore(target, viewer) {
+      let score = 0;
+      // 同城加分（+30）
+      if (target.city && viewer.city && target.city === viewer.city) {
+        score += 30;
+      }
+      // 年龄差越小加分（25岁差内，每差1岁扣1分，最高+25）
+      if (target.age && viewer.age) {
+        const ageDiff = Math.abs(target.age - viewer.age);
+        if (ageDiff <= 25) {
+          score += (25 - ageDiff);
+        }
+      }
+      // 实名认证加分（+10）
+      if (target.realNameVerified) {
+        score += 10;
+      }
+      // 学历认证加分（+8）
+      if (target.education && target.education.verified) {
+        score += 8;
+      }
+      // 视频认证加分（+7）
+      if (target.videoVerified) {
+        score += 7;
+      }
+      // VIP 特权曝光（+15）
+      if (target.vipMatchmakerIds && target.vipMatchmakerIds.length > 0) {
+        score += 15;
+      }
+      // 择偶要求匹配（+5，如果viewer.age在target.requirements提到的年龄范围内）
+      if (target.requirements && viewer.age) {
+        const ageMatch = target.requirements.match(/(\d+)\s*[-~]\s*(\d+)\s*岁/);
+        if (ageMatch) {
+          const minAge = parseInt(ageMatch[1], 10);
+          const maxAge = parseInt(ageMatch[2], 10);
+          if (viewer.age >= minAge && viewer.age <= maxAge) {
+            score += 5;
+          }
+        }
+      }
+      return score;
+    }
+
+    // 处理返回数据：排除敏感字段，非 VIP 不返回 wechat，并计算匹配度
     const list = listRes.rows.map((row) => {
       const visibleUser = applyPublishedProfile(row.raw);
       const { passwordHash, idCard, profileByMatchmaker, ...userInfo } = visibleUser;
@@ -2031,8 +2373,19 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
         .map((id) => matchmakerMap.get(id))
         .filter(Boolean)
         .map(({ passwordHash: _passwordHash, ...matchmaker }) => matchmaker);
+      // 计算匹配度并加入返回
+      userInfo.matchScore = calculateMatchScore(row.raw, me);
+      // 认证徽章
+      userInfo.badges = {
+        realName: !!row.raw.realNameVerified,
+        education: !!(row.raw.education && row.raw.education.verified),
+        video: !!row.raw.videoVerified,
+      };
       return userInfo;
     });
+
+    // 按匹配度降序排序（VIP 特权曝光）
+    list.sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
 
     response.json({
       code: 0,

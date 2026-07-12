@@ -17,7 +17,7 @@ const seedState = {
     platform: 45,
   },
   agencies: [
-    { id: "a1", name: "优联婚恋传媒", city: "上海" },
+    { id: "a1", name: "优联婚恋", city: "上海" },
     { id: "a2", name: "星河红娘社", city: "杭州" },
   ],
   matchmakers: [
@@ -31,11 +31,11 @@ const seedState = {
       gender: "男",
       age: 31,
       city: "上海",
-      job: "内容策划",
-      wechat: "linan_media",
+      job: "软件工程师",
+      wechat: "linan_dev",
       vip: false,
       referralMatchmakerId: null,
-      bio: "喜欢纪录片、城市漫步和认真做饭，工作稳定，想找一个能一起成长的人。",
+      bio: "喜欢城市漫步和认真做饭，工作稳定，想找一个能一起成长的人。",
       requirements: "希望对方真诚、有稳定生活节奏，愿意沟通，也喜欢旅行或阅读。",
       photo:
         "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=60",
@@ -46,7 +46,7 @@ const seedState = {
       gender: "女",
       age: 29,
       city: "上海",
-      job: "品牌经理",
+      job: "市场营销经理",
       wechat: "qing_brand",
       vip: true,
       referralMatchmakerId: "m1",
@@ -61,8 +61,8 @@ const seedState = {
       gender: "女",
       age: 33,
       city: "杭州",
-      job: "制片人",
-      wechat: "xuzhixia_film",
+      job: "项目管理",
+      wechat: "xuzhixia_pm",
       vip: false,
       referralMatchmakerId: null,
       bio: "常年做项目管理，喜欢高效也珍惜松弛，周末会去爬山。",
@@ -76,11 +76,11 @@ const seedState = {
       gender: "男",
       age: 35,
       city: "杭州",
-      job: "摄影导演",
-      wechat: "yizhou_photo",
+      job: "建筑师",
+      wechat: "yizhou_arch",
       vip: true,
       referralMatchmakerId: "m2",
-      bio: "工作在影像行业，生活里比较安静，喜欢骑行、做咖啡和看老电影。",
+      bio: "工作在建筑设计行业，生活里比较安静，喜欢骑行、做咖啡和看老电影。",
       requirements: "希望女生独立、善良，能接受偶尔出差，愿意认真经营关系。",
       photo:
         "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=60",
@@ -91,11 +91,11 @@ const seedState = {
       gender: "男",
       age: 28,
       city: "南京",
-      job: "新媒体运营",
+      job: "公务员",
       wechat: "yubai_story",
       vip: false,
       referralMatchmakerId: null,
-      bio: "做内容增长，平时喜欢打网球、听播客，也会认真记录生活里的小事。",
+      bio: "工作稳定有规律，平时喜欢打网球、听播客，也会认真记录生活里的小事。",
       requirements: "希望对方乐观坦率，愿意一起尝试新鲜事物，工作和生活都有边界感。",
       photo:
         "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=300&q=60",
@@ -106,7 +106,7 @@ const seedState = {
       gender: "女",
       age: 27,
       city: "苏州",
-      job: "视觉设计师",
+      job: "UI设计师",
       wechat: "jiayi_design",
       vip: true,
       referralMatchmakerId: "m1",
@@ -121,8 +121,8 @@ const seedState = {
       gender: "男",
       age: 39,
       city: "上海",
-      job: "广告导演",
-      wechat: "nanxing_ad",
+      job: "金融分析师",
+      wechat: "nanxing_fin",
       vip: true,
       referralMatchmakerId: "m2",
       bio: "项目型工作者，节奏有时很紧，但会给重要关系留出确定时间。",
@@ -136,12 +136,12 @@ const seedState = {
       gender: "女",
       age: 36,
       city: "成都",
-      job: "纪录片编导",
-      wechat: "yinuo_doc",
+      job: "心理咨询师",
+      wechat: "yinuo_mind",
       vip: false,
       referralMatchmakerId: null,
-      bio: "常在外地拍摄，喜欢真实的人和有温度的关系，休息时会做瑜伽。",
-      requirements: "希望对方心态开放，能理解传媒行业节奏，愿意长期认真相处。",
+      bio: "常在外地参加培训，喜欢真实的人和有温度的关系，休息时会做瑜伽。",
+      requirements: "希望对方心态开放，能理解彼此的工作节奏，愿意长期认真相处。",
       photo:
         "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=60",
     },
@@ -1311,7 +1311,7 @@ function showPushNotification(title, fields, type = "info") {
     <div class="wechat-header">
       <div class="wechat-brand">
         <div class="wechat-icon">微</div>
-        <span>缘定传媒人微信公众号</span>
+        <span>缘定公众号</span>
       </div>
       <span class="wechat-time">${timeStr}</span>
     </div>
@@ -2705,7 +2705,7 @@ async function contactRequestSide(requestId, side) {
       "牵线红娘": matchmaker?.name || "专属红娘",
       "心仪嘉宾": to.name,
       "微信号码": to.wechat,
-      "温馨提示": "红娘已确认双方信息，请复制微信号添加好友并备注“缘定传媒人”。"
+      "温馨提示": "红娘已确认双方信息，请复制微信号添加好友并备注“缘定”。"
     });
   }
 }
@@ -3677,8 +3677,8 @@ function miniToRegister() {
 function quickAddMember(gender) {
   const maleNames = ["江寒", "陆云洲", "祁宴", "沈修远", "裴渡", "陈亦帆", "林子默", "顾景川", "陆言熙", "沈慕白", "宋怀言", "周子安"];
   const femaleNames = ["温以凡", "桑稚", "许星若", "季秋", "姜泥", "沈星若", "温以乔", "姜暮烟", "许红豆", "林妙妙", "简言", "唐微微"];
-  const maleJobs = ["视频摄影师", "自媒体主播", "播客主编", "新媒体策划", "传媒大学讲师", "独立制片人", "内容创意导演", "音频总监"];
-  const femaleJobs = ["品牌公关总监", "时尚专栏作者", "纪录片策划", "新媒体主编", "娱乐记者", "配音演员", "创意法务", "广告制片"];
+  const maleJobs = ["软件工程师", "产品经理", "医生", "律师", "建筑师", "金融分析师", "大学教授", "公务员", "设计师", "厨师", "心理咨询师", "创业者"];
+  const femaleJobs = ["教师", "医生", "设计师", "人力资源", "市场营销", "会计师", "心理咨询师", "编辑", "律师", "药剂师", "产品经理", "插画师"];
   const cities = ["上海", "北京", "广州", "深圳", "杭州", "南京", "成都", "武汉"];
   
   const malePhotos = [
@@ -3699,7 +3699,7 @@ function quickAddMember(gender) {
   const bios = [
     "做内容非常看重真诚，热爱看纪录片，周末喜欢在城市走走停停，期待遇到有共鸣的你。",
     "工作比较饱和但生活安排得井井有条，平时喜欢摄影、手作和网球，希望我们能一起去旅行。",
-    "在传媒行业打拼，既向往高效的专业节奏，也珍惜松弛的周末生活，希望找个成熟有担当的人。",
+    "在工作中认真打拼，既向往高效的专业节奏，也珍惜松弛的周末生活，希望找个成熟有担当的人。",
     "性格慢热但很真诚，平时喜欢研究咖啡、阅读和看老电影，希望能共同经营一段长久的关系。",
     "热爱一切新鲜的事物，做品牌策划，平时爱打羽毛球，希望对方是个幽默有责任心的人。"
   ];
@@ -3708,7 +3708,7 @@ function quickAddMember(gender) {
     "希望你真诚坦率，有自己独立的空间和热爱，年龄 25-35 岁，在同城工作。",
     "期待遇到一位情绪稳定、尊重彼此事业、同样喜欢生活和旅行的另一半。",
     "希望男生有责任心，懂得沟通，愿意一起面对生活里琐碎的细节。",
-    "希望女生乐观善良，理解传媒行业的忙碌，愿意共同为未来做规划。"
+    "希望女生乐观善良，理解彼此工作的忙碌，愿意共同为未来做规划。"
   ];
 
   const name = gender === "男" 

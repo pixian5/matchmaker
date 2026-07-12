@@ -1,7 +1,7 @@
 /**
  * 客户端业务接口
  */
-import { get, post, patch } from "./request";
+import { get, post, patch, del } from "./request";
 
 // 获取当前用户资料
 export const getMeApi = () => get("/client/me");
@@ -23,6 +23,27 @@ export const getMatchRequestsApi = () => get("/client/match-requests");
 
 // 提交实名认证
 export const submitRealNameApi = (data) => post("/client/real-name", data);
+
+// 提交学历认证
+export const submitEducationVerifyApi = (data) => post("/client/education-verify", data);
+
+// 提交视频认证
+export const submitVideoVerifyApi = (data) => post("/client/video-verify", data);
+
+// 获取认证状态
+export const getVerifyStatusApi = () => get("/client/verify-status");
+
+// 拉黑用户
+export const blockUserApi = (data) => post("/client/blocks", data);
+
+// 取消拉黑
+export const unblockUserApi = (blockedId) => del(`/client/blocks/${blockedId}`);
+
+// 举报用户
+export const reportUserApi = (data) => post("/client/reports", data);
+
+// 获取拉黑列表
+export const getBlocksApi = () => get("/client/blocks");
 
 // VIP 兑换
 export const redeemVipApi = (data) => post("/client/vip/redeem", data);

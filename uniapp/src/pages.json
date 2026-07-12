@@ -3,7 +3,7 @@
     {
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "缘定传媒人",
+        "navigationBarTitleText": "缘定",
         "enablePullDownRefresh": true
       }
     },
@@ -72,7 +72,7 @@
   ],
   "globalStyle": {
     "navigationBarTextStyle": "white",
-    "navigationBarTitleText": "缘定传媒人",
+    "navigationBarTitleText": "缘定",
     "navigationBarBackgroundColor": "#0f766e",
     "backgroundColor": "#eef2f5",
     "backgroundTextStyle": "dark"

@@ -2,8 +2,8 @@
   <view class="login-container">
     <view class="brand-section">
       <view class="brand-mark">缘</view>
-      <text class="brand-title">缘定传媒人</text>
-      <text class="brand-subtitle">传媒行业专属交友平台</text>
+      <text class="brand-title">缘定</text>
+      <text class="brand-subtitle">真实安全的单身交友平台</text>
     </view>
     <view class="form-section">
       <view class="form-group">

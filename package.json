@@ -1,7 +1,7 @@
 {
   "name": "mediapeople",
   "version": "1.0.0",
-  "description": "这是一个单身交友业务原型，包含客户小程序端、红娘工作台、管理后台、Node/Express API、PostgreSQL 数据库和 Docker/Nginx 部署配置。",
+  "description": "缘定 - 单身交友平台，包含客户小程序端、红娘工作台、管理后台、Node/Express API、PostgreSQL 数据库和 Docker/Nginx 部署配置。",
   "main": "app.js",
   "scripts": {
     "render:static": "node ./scripts/render-static.mjs",
