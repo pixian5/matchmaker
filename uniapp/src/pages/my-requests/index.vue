@@ -28,6 +28,13 @@
               申请聊天
             </button>
           </view>
+          <text class="service-stage">服务进度：{{ item.serviceStage || '待首次推荐' }} · 已跟进 {{ item.followupCount || 0 }} 次</text>
+          <button
+            v-if="item.matchOutcome !== 'stable_progress'"
+            class="outcome-btn"
+            @click.stop="confirmStable(item)"
+          >确认双方稳定发展</button>
+          <text v-else class="confirmed-text">✓ 你已确认双方稳定发展，红娘获得成功服务奖励</text>
         </view>
       </view>
       
@@ -41,7 +48,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { getMatchRequestsApi } from '@/api/client';
+import { getMatchRequestsApi, confirmMatchOutcomeApi } from '@/api/client';
 import { getChatThreadsApi } from '@/api/chat';
 import { onShow } from '@dcloudio/uni-app';
 
@@ -124,6 +131,17 @@ const openMemberChat = (item) => {
 const applyMemberChat = (item) => {
   openMatchmakerChat(item, memberChatRequestText);
 };
+
+const confirmStable = async (item) => {
+  try {
+    await confirmMatchOutcomeApi(item.id);
+    item.matchOutcome = 'stable_progress';
+    item.serviceStage = '双方稳定发展（用户确认）';
+    uni.showToast({ title: '已确认，感谢反馈', icon: 'success' });
+  } catch (error) {
+    // request interceptor handles toast
+  }
+};
 </script>
 
 <style lang="scss" scoped>
@@ -170,6 +188,28 @@ const applyMemberChat = (item) => {
     .time {
       font-size: $font-sm;
       color: $color-muted;
+    }
+
+    .service-stage, .confirmed-text {
+      display: block;
+      margin-top: $spacing-xs;
+      font-size: $font-sm;
+      color: $color-muted;
+    }
+
+    .confirmed-text {
+      color: #166534;
+    }
+
+    .outcome-btn {
+      height: 56rpx;
+      line-height: 56rpx;
+      margin: $spacing-xs 0 0;
+      padding: 0 $spacing-sm;
+      font-size: $font-sm;
+      color: $color-primary-dark;
+      background: $color-primary-light;
+      &::after { border: none; }
     }
 
     .action-row {

@@ -22,6 +22,7 @@ export const useUserStore = defineStore("user", {
     // VIP 状态
     isVip: false,
     vipExpiresAt: "",
+    servicePlan: null,
     // 完整资料（懒加载）
     profile: null,
   }),
@@ -89,6 +90,7 @@ export const useUserStore = defineStore("user", {
       this.avatar = user.photo || user.avatar || this.avatar;
       this.isVip = !!user.vip;
       this.vipExpiresAt = user.vipExpiresAt || "";
+      this.servicePlan = user.servicePlan || null;
       this.profile = user;
     },
 
@@ -115,6 +117,7 @@ export const useUserStore = defineStore("user", {
       this.avatar = "";
       this.isVip = false;
       this.vipExpiresAt = "";
+      this.servicePlan = null;
       this.profile = null;
       try {
         uni.removeStorageSync(SESSION_KEY);

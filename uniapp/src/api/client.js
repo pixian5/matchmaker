@@ -21,6 +21,10 @@ export const createMatchRequestApi = (data) => post("/client/match-requests", da
 // 获取我的牵线记录
 export const getMatchRequestsApi = () => get("/client/match-requests");
 
+// 会员确认牵线结果，成功奖励只能由会员本人触发
+export const confirmMatchOutcomeApi = (id, outcome = "stable_progress") =>
+  patch(`/client/match-requests/${id}/outcome`, { outcome });
+
 // 提交实名认证
 export const submitRealNameApi = (data) => post("/client/real-name", data);
 

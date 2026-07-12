@@ -2,11 +2,14 @@
   <view class="vip-container">
     <view class="vip-card">
       <view class="card-header">
-        <text class="title">VIP 会员尊享</text>
+        <text class="title">人工牵线服务</text>
         <text class="status" v-if="userStore.vipActive">
           有效期至: {{ formatDate(userStore.vipExpiresAt) }}
         </text>
         <text class="status inactive" v-else>未开通</text>
+      </view>
+      <view class="quota-box" v-if="userStore.vipActive && userStore.servicePlan">
+        <text>本周剩余：牵线 {{ matchRemaining }} 次 · 跟进 {{ followupRemaining }} 次</text>
       </view>
       <view class="privilege-list">
         <view class="privilege-item">
@@ -15,7 +18,7 @@
         </view>
         <view class="privilege-item">
           <text class="icon">✓</text>
-          <text class="text">不限次数发起牵线申请</text>
+          <text class="text">每周 5 次人工牵线 + 5 次跟进</text>
         </view>
         <view class="privilege-item">
           <text class="icon">✓</text>
@@ -25,7 +28,8 @@
     </view>
     
     <view class="redeem-section">
-      <text class="section-title">兑换 VIP</text>
+      <text class="section-title">购买/兑换服务包</text>
+      <text class="service-copy">¥399 / 30 天；首次推荐有明确时限，不合适可申请重新匹配。</text>
       <view class="input-group">
         <input class="code-input" v-model="promoCode" placeholder="请输入兑换码" />
         <button class="btn-redeem" @click="handleRedeem" :class="{ disabled: loading || !promoCode }">
@@ -37,13 +41,15 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { redeemVipApi } from '@/api/client';
 import { useUserStore } from '@/store/user';
 
 const userStore = useUserStore();
 const promoCode = ref('');
 const loading = ref(false);
+const matchRemaining = computed(() => Math.max(0, Number(userStore.servicePlan?.weeklyMatchLimit || 5) - Number(userStore.servicePlan?.weeklyMatchUsed || 0)));
+const followupRemaining = computed(() => Math.max(0, Number(userStore.servicePlan?.weeklyFollowupLimit || 5) - Number(userStore.servicePlan?.weeklyFollowupUsed || 0)));
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
@@ -82,6 +88,15 @@ const handleRedeem = async () => {
   padding: $spacing-lg;
   box-shadow: $shadow-card;
   margin-bottom: $spacing-xl;
+
+  .quota-box {
+    padding: $spacing-sm $spacing-md;
+    margin-bottom: $spacing-md;
+    border-radius: $radius-md;
+    color: $color-primary-dark;
+    background: rgba(20, 184, 166, 0.12);
+    font-size: $font-sm;
+  }
   
   .card-header {
     display: flex;
@@ -130,6 +145,13 @@ const handleRedeem = async () => {
   padding: $spacing-lg;
   border-radius: $radius-md;
   box-shadow: $shadow-card;
+
+  .service-copy {
+    display: block;
+    margin-bottom: $spacing-md;
+    color: $color-muted;
+    font-size: $font-sm;
+  }
   
   .section-title {
     display: block;
