@@ -30,8 +30,8 @@
         </view>
         <!-- 请求操作区 -->
         <view v-if="item.type === 'request'" class="card-actions">
-          <button class="btn-sm btn-secondary" @click="contactSide(item.id, 'male')">联系男方</button>
-          <button class="btn-sm btn-secondary" @click="contactSide(item.id, 'female')">联系女方</button>
+          <button class="btn-sm btn-secondary" @click="contactSide(item.id, 'male')">私聊男方</button>
+          <button class="btn-sm btn-secondary" @click="contactSide(item.id, 'female')">私聊女方</button>
           <button v-if="hasGroupThread(item.id)" class="btn-sm btn-primary" @click="openChat(threadForGroup(item.id)?.id)">三方群聊</button>
         </view>
         <view v-if="item.type === 'request'" class="card-extra">
@@ -90,7 +90,6 @@ import { onShow, onPullDownRefresh } from '@dcloudio/uni-app';
 import { useUserStore } from '@/store/user';
 import { useAppStore } from '@/store/appStore';
 import {
-  contactRequestSideApi,
   toggleMemberChatApi,
   updateServiceProgressApi,
   reviewProfileApi
@@ -135,7 +134,7 @@ const notificationList = computed(() => {
       id: request.id,
       statusText: request.status || '待处理',
       title: `${from?.name || '未知'} 申请认识 ${to?.name || '未知'}`,
-      desc: '点击联系男方/女方，进入对应会员的一对一聊天',
+      desc: '点击私聊男方/女方，直接进入对应会员的一对一聊天',
       createdAt: request.createdAt,
       memberChatEnabled: Boolean(request.memberChatEnabled),
       serviceStage: request.serviceStage
@@ -210,14 +209,22 @@ const formatTime = (dateStr) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const contactSide = async (requestId, side) => {
-  try {
-    await contactRequestSideApi(requestId, side);
-    await appStore.fetchState();
-    uni.showToast({ title: `已标记联系${side === 'male' ? '男方' : '女方'}`, icon: 'none' });
-  } catch (error) {
-    // request 拦截器已提示
+const contactSide = (requestId, side) => {
+  const request = appStore.getRequestById(requestId);
+  if (!request) return;
+
+  const { maleUser, femaleUser } = getGenderParticipants(request);
+  const target = side === 'male' ? maleUser : femaleUser;
+  const thread = threads.value.find((item) => {
+    if (item.type !== 'member_matchmaker' || item.requestId !== requestId || !target) return false;
+    return item.participants?.some((participant) => participant.role === 'client' && participant.id === target.id);
+  });
+
+  if (!thread) {
+    uni.showToast({ title: '私聊会话尚未创建，请刷新后重试', icon: 'none' });
+    return;
   }
+  openChat(thread.id);
 };
 
 const toggleMemberChat = async (requestId, enabled) => {

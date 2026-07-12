@@ -9,10 +9,6 @@ export const getStateApi = () => get("/state");
 // 获取红娘工作台数据（优先使用 /state，后续可替换为 /matchmaker/dashboard）
 export const getMatchmakerDashboardApi = () => get("/state");
 
-// 联系某一方：side 为 male 或 female
-export const contactRequestSideApi = (requestId, side) =>
-  patch(`/matchmaker/requests/${requestId}/contacted`, { side });
-
 // 开关群聊
 export const toggleMemberChatApi = (requestId, enabled) =>
   patch(`/matchmaker/requests/${requestId}/member-chat`, { enabled });
