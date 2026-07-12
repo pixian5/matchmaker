@@ -2263,12 +2263,12 @@ app.get("/api/client/chat/threads/:id/messages", requireAuth(["client"]), async 
       return response.status(403).json({ code: 403, message: "无权访问该聊天线程" });
     }
 
-    // 查询该线程的所有消息，按 created_at 优先排序，seq 作为同时间戳的 tiebreaker
+    // seq 是线程内的服务端处理顺序；旧消息没有 seq 时才回退到创建时间
     const msgRes = await pool.query(
       `SELECT raw FROM chat_messages 
        WHERE thread_id = $1 
-       ORDER BY created_at ASC,
-         CASE WHEN raw ? 'seq' THEN (raw->>'seq')::int ELSE NULL END ASC NULLS LAST`,
+       ORDER BY CASE WHEN raw ? 'seq' THEN (raw->>'seq')::int ELSE NULL END ASC NULLS LAST,
+         created_at ASC`,
       [threadId],
     );
 

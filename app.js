@@ -992,9 +992,9 @@ function getMatchmakerGroupThreadForRequest(requestId) {
 }
 
 function compareChatMessages(a, b) {
+  if (a.seq != null && b.seq != null) return a.seq - b.seq;
   const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
   if (timeDiff !== 0) return timeDiff;
-  if (a.seq != null && b.seq != null) return a.seq - b.seq;
   return 0;
 }
 
