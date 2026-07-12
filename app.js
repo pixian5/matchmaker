@@ -992,10 +992,20 @@ function getMatchmakerGroupThreadForRequest(requestId) {
 }
 
 function compareChatMessages(a, b) {
+  if (a.senderRole === b.senderRole && a.senderId === b.senderId && a.clientSeq != null && b.clientSeq != null) {
+    return a.clientSeq - b.clientSeq;
+  }
   if (a.seq != null && b.seq != null) return a.seq - b.seq;
   const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
   if (timeDiff !== 0) return timeDiff;
   return 0;
+}
+
+function nextChatClientSeq(senderId) {
+  const key = `chat_client_seq_${senderId}`;
+  const next = Number(localStorage.getItem(key) || 0) + 1;
+  localStorage.setItem(key, String(next));
+  return next;
 }
 
 function getThreadMessages(threadId) {
@@ -2786,6 +2796,7 @@ async function sendMiniChatMessage(event) {
     content,
     createdAt: new Date().toISOString(),
   };
+  tempMessage.clientSeq = nextChatClientSeq(user.id);
   upsertChatMessage(tempMessage);
   input.value = "";
   renderAll();
@@ -2796,7 +2807,7 @@ async function sendMiniChatMessage(event) {
       const res = await fetch(`${API_BASE}/chat/threads/${thread.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ content, createdAt: tempMessage.createdAt })
+        body: JSON.stringify({ content, clientSeq: tempMessage.clientSeq, createdAt: tempMessage.createdAt })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -2868,6 +2879,7 @@ async function sendMatchmakerChatMessage(event) {
     content,
     createdAt: new Date().toISOString(),
   };
+  tempMessage.clientSeq = nextChatClientSeq(matchmaker.id);
   upsertChatMessage(tempMessage);
   input.value = "";
   renderAll();
@@ -2878,7 +2890,7 @@ async function sendMatchmakerChatMessage(event) {
       const res = await fetch(`${API_BASE}/chat/threads/${thread.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ content, createdAt: tempMessage.createdAt })
+        body: JSON.stringify({ content, clientSeq: tempMessage.clientSeq, createdAt: tempMessage.createdAt })
       });
       if (!res.ok) {
         const err = await res.json();

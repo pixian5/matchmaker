@@ -134,6 +134,9 @@ const syncLatestMessages = async (force = false) => {
 };
 
 const compareMessages = (a, b) => {
+  if (a.senderRole === b.senderRole && a.senderId === b.senderId && a.clientSeq != null && b.clientSeq != null) {
+    return a.clientSeq - b.clientSeq;
+  }
   if (a.seq != null && b.seq != null) return a.seq - b.seq;
   const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
   if (timeDiff !== 0) return timeDiff;
@@ -240,18 +243,27 @@ const generateClientMsgNo = () => {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 };
 
+const nextClientSeq = () => {
+  const key = `chat_client_seq_${userStore.userId}`;
+  const next = Number(uni.getStorageSync(key) || 0) + 1;
+  uni.setStorageSync(key, next);
+  return next;
+};
+
 const handleSend = async () => {
   const content = inputText.value.trim();
   if (!content) return;
   pendingSendCount.value += 1;
 
   const clientMsgNo = generateClientMsgNo();
+  const clientSeq = nextClientSeq();
   const tempId = `temp_${clientMsgNo}`;
   tempMessageIds.value.add(tempId);
 
   const tempMessage = {
     id: tempId,
     clientMsgNo,
+    clientSeq,
     content,
     senderId: userStore.userId,
     senderRole: 'client',
@@ -263,7 +275,7 @@ const handleSend = async () => {
   restoreInputFocus();
 
   try {
-    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId, clientMsgNo, createdAt: tempMessage.createdAt });
+    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId, clientMsgNo, clientSeq, createdAt: tempMessage.createdAt });
     const realMessage = res.message || res.data?.message;
     if (realMessage) {
       if (!realMessage.clientMsgNo) {

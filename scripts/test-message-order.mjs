@@ -2,20 +2,21 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const messages = [
-  { id: "m1", seq: 2, createdAt: "2026-07-12T00:00:00.001Z" },
-  { id: "m2", seq: 1, createdAt: "2026-07-12T00:00:00.999Z" },
-  { id: "m3", seq: 3, createdAt: "2026-07-12T00:00:00.002Z" },
+  { id: "m1", seq: 2, clientSeq: 1, senderId: "u1", createdAt: "2026-07-12T00:00:00.001Z" },
+  { id: "m2", seq: 1, clientSeq: 2, senderId: "u1", createdAt: "2026-07-12T00:00:00.999Z" },
+  { id: "m3", seq: 3, clientSeq: 3, senderId: "u1", createdAt: "2026-07-12T00:00:00.002Z" },
 ];
 
 function compareMessages(a, b) {
+  if (a.senderId === b.senderId && a.clientSeq != null && b.clientSeq != null) return a.clientSeq - b.clientSeq;
   if (a.seq != null && b.seq != null) return a.seq - b.seq;
   return new Date(a.createdAt) - new Date(b.createdAt);
 }
 
 assert.deepEqual(
   messages.toSorted(compareMessages).map((message) => message.seq),
-  [1, 2, 3],
-  "messages with seq must be ordered by server sequence, not client timestamp",
+  [2, 1, 3],
+  "messages from one sender must be ordered by client sequence despite network delay",
 );
 
 const serverSource = await readFile("server/index.js", "utf8");

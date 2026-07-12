@@ -1758,6 +1758,7 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
   const threadId = request.params.id;
   const content = String(request.body?.content || "").trim();
   const clientMsgNo = request.body?.clientMsgNo || null;
+  const clientSeq = Number.isInteger(request.body?.clientSeq) ? request.body.clientSeq : null;
   const clientCreatedAt = request.body?.createdAt || null;
   if (!content) return response.status(400).json({ error: "content_required" });
 
@@ -1795,6 +1796,9 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     };
     if (clientMsgNo) {
       message.clientMsgNo = clientMsgNo;
+    }
+    if (clientSeq != null && clientSeq > 0) {
+      message.clientSeq = clientSeq;
     }
     thread.lastMessageAt = message.createdAt;
     thread.lastMessagePreview = content.slice(0, 80);
