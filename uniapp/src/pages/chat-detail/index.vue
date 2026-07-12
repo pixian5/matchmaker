@@ -134,9 +134,13 @@ const syncLatestMessages = async (force = false) => {
 };
 
 const compareMessages = (a, b) => {
-  if (a.senderRole === b.senderRole && a.senderId === b.senderId && a.clientSeq != null && b.clientSeq != null) {
+  // 同一发送者 + 同一设备：按客户端序号排序（保证用户视角的发送顺序）
+  if (a.senderRole === b.senderRole && a.senderId === b.senderId
+      && a.deviceId && a.deviceId === b.deviceId
+      && a.clientSeq != null && b.clientSeq != null) {
     return a.clientSeq - b.clientSeq;
   }
+  // 跨设备或不同发送者：按服务器接收顺序
   if (a.seq != null && b.seq != null) return a.seq - b.seq;
   const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
   if (timeDiff !== 0) return timeDiff;
@@ -243,6 +247,16 @@ const generateClientMsgNo = () => {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 };
 
+const getDeviceId = () => {
+  const key = `chat_device_id_${userStore.userId}`;
+  let deviceId = uni.getStorageSync(key);
+  if (!deviceId) {
+    deviceId = `d_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    uni.setStorageSync(key, deviceId);
+  }
+  return deviceId;
+};
+
 const nextClientSeq = () => {
   const key = `chat_client_seq_${userStore.userId}`;
   const next = Number(uni.getStorageSync(key) || 0) + 1;
@@ -257,6 +271,7 @@ const handleSend = async () => {
 
   const clientMsgNo = generateClientMsgNo();
   const clientSeq = nextClientSeq();
+  const deviceId = getDeviceId();
   const tempId = `temp_${clientMsgNo}`;
   tempMessageIds.value.add(tempId);
 
@@ -264,6 +279,7 @@ const handleSend = async () => {
     id: tempId,
     clientMsgNo,
     clientSeq,
+    deviceId,
     content,
     senderId: userStore.userId,
     senderRole: 'client',
@@ -275,11 +291,14 @@ const handleSend = async () => {
   restoreInputFocus();
 
   try {
-    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId, clientMsgNo, clientSeq, createdAt: tempMessage.createdAt });
+    const res = await sendMessageApi(threadId.value, { content, senderRole: 'client', senderId: userStore.userId, clientMsgNo, clientSeq, deviceId, createdAt: tempMessage.createdAt });
     const realMessage = res.message || res.data?.message;
     if (realMessage) {
       if (!realMessage.clientMsgNo) {
         realMessage.clientMsgNo = clientMsgNo;
+      }
+      if (!realMessage.deviceId) {
+        realMessage.deviceId = deviceId;
       }
       upsertMessage(realMessage);
     }

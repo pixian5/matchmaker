@@ -992,9 +992,13 @@ function getMatchmakerGroupThreadForRequest(requestId) {
 }
 
 function compareChatMessages(a, b) {
-  if (a.senderRole === b.senderRole && a.senderId === b.senderId && a.clientSeq != null && b.clientSeq != null) {
+  // 同一发送者 + 同一设备：按客户端序号排序（保证用户视角的发送顺序）
+  if (a.senderRole === b.senderRole && a.senderId === b.senderId
+      && a.deviceId && a.deviceId === b.deviceId
+      && a.clientSeq != null && b.clientSeq != null) {
     return a.clientSeq - b.clientSeq;
   }
+  // 跨设备或不同发送者：按服务器接收顺序
   if (a.seq != null && b.seq != null) return a.seq - b.seq;
   const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
   if (timeDiff !== 0) return timeDiff;
@@ -1006,6 +1010,16 @@ function nextChatClientSeq(senderId) {
   const next = Number(localStorage.getItem(key) || 0) + 1;
   localStorage.setItem(key, String(next));
   return next;
+}
+
+function getChatDeviceId(senderId) {
+  const key = `chat_device_id_${senderId}`;
+  let deviceId = localStorage.getItem(key);
+  if (!deviceId) {
+    deviceId = `d_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(key, deviceId);
+  }
+  return deviceId;
 }
 
 function getThreadMessages(threadId) {
@@ -2797,6 +2811,7 @@ async function sendMiniChatMessage(event) {
     createdAt: new Date().toISOString(),
   };
   tempMessage.clientSeq = nextChatClientSeq(user.id);
+  tempMessage.deviceId = getChatDeviceId(user.id);
   upsertChatMessage(tempMessage);
   input.value = "";
   renderAll();
@@ -2807,7 +2822,7 @@ async function sendMiniChatMessage(event) {
       const res = await fetch(`${API_BASE}/chat/threads/${thread.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ content, clientSeq: tempMessage.clientSeq, createdAt: tempMessage.createdAt })
+        body: JSON.stringify({ content, clientSeq: tempMessage.clientSeq, deviceId: tempMessage.deviceId, createdAt: tempMessage.createdAt })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -2880,6 +2895,7 @@ async function sendMatchmakerChatMessage(event) {
     createdAt: new Date().toISOString(),
   };
   tempMessage.clientSeq = nextChatClientSeq(matchmaker.id);
+  tempMessage.deviceId = getChatDeviceId(matchmaker.id);
   upsertChatMessage(tempMessage);
   input.value = "";
   renderAll();
@@ -2890,7 +2906,7 @@ async function sendMatchmakerChatMessage(event) {
       const res = await fetch(`${API_BASE}/chat/threads/${thread.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ content, clientSeq: tempMessage.clientSeq, createdAt: tempMessage.createdAt })
+        body: JSON.stringify({ content, clientSeq: tempMessage.clientSeq, deviceId: tempMessage.deviceId, createdAt: tempMessage.createdAt })
       });
       if (!res.ok) {
         const err = await res.json();
