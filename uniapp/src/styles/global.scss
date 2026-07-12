@@ -201,6 +201,83 @@ page {
   font-size: $font-sm;
 }
 
+/* 小型标签按钮（红娘/管理后台操作区复用） */
+.btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 56rpx;
+  padding: 0 22rpx;
+  font-size: $font-sm;
+  border-radius: $radius-round;
+  margin: 0;
+
+  &::after {
+    display: none;
+  }
+}
+
+/* 管理后台蓝色主按钮 */
+.btn-admin {
+  background: $color-blue;
+  color: #ffffff;
+
+  &:active {
+    background: #2b4fc7;
+  }
+}
+
+/* 风险/退出按钮 */
+.btn-danger {
+  background: $color-coral;
+  color: #ffffff;
+
+  &:active {
+    background: #c55a4c;
+  }
+}
+
+/* 透明边框按钮 */
+.btn-ghost {
+  background: transparent;
+  color: $color-muted;
+  border: 2rpx solid $color-line;
+}
+
+/* 面板标题 */
+.section-title {
+  font-size: $font-md;
+  font-weight: bold;
+  color: $color-ink;
+  margin-bottom: $spacing-md;
+}
+
+/* 普通列表项 */
+.plain-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: $spacing-md;
+  background: $color-panel;
+  border-radius: $radius-md;
+  margin-bottom: $spacing-sm;
+  box-shadow: $shadow-card;
+}
+
+/* 标签选择器 */
+.picker-value {
+  width: 100%;
+  height: 80rpx;
+  padding: 0 $spacing-md;
+  background: $color-paper;
+  border: 2rpx solid $color-line;
+  border-radius: $radius-md;
+  font-size: $font-base;
+  color: $color-ink;
+  display: flex;
+  align-items: center;
+}
+
 /* H5 桌面预览时，所有小程序页面保持手机竖屏宽度。 */
 @media screen and (min-width: 520px) {
   body {

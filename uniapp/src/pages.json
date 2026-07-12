@@ -68,6 +68,40 @@
       "style": {
         "navigationBarTitleText": "聊天"
       }
+    },
+    {
+      "path": "pages/matchmaker/login/index",
+      "style": {
+        "navigationBarTitleText": "红娘登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/matchmaker/workbench/index",
+      "style": {
+        "navigationBarTitleText": "红娘工作台",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/matchmaker/chat-detail/index",
+      "style": {
+        "navigationBarTitleText": "红娘聊天"
+      }
+    },
+    {
+      "path": "pages/admin/login/index",
+      "style": {
+        "navigationBarTitleText": "管理后台登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/admin/console/index",
+      "style": {
+        "navigationBarTitleText": "管理控制台",
+        "enablePullDownRefresh": true
+      }
     }
   ],
   "globalStyle": {
