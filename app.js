@@ -998,11 +998,11 @@ function compareChatMessages(a, b) {
       && a.clientSeq != null && b.clientSeq != null) {
     return a.clientSeq - b.clientSeq;
   }
-  // 跨设备或不同发送者：按服务器接收顺序
-  if (a.seq != null && b.seq != null) return a.seq - b.seq;
+  // 跨设备或不同发送者：按客户端创建时间排序（保证真实发送顺序）
   const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
   if (timeDiff !== 0) return timeDiff;
-  return 0;
+  // 同秒消息：按消息ID排序（保证稳定排序）
+  return a.id.localeCompare(b.id);
 }
 
 function nextChatClientSeq(senderId) {
