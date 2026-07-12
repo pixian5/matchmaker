@@ -8,10 +8,29 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
 const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_TOKEN || "matchmaker-dev-secret-change-me";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
-const SERVICE_PRICE = 399;
-const SERVICE_DAYS = 30;
-const WEEKLY_MATCH_LIMIT = 5;
-const WEEKLY_FOLLOWUP_LIMIT = 5;
+const SERVICE_PLANS = {
+  trial_3d: {
+    id: "trial_3d", name: "3天体验卡", price: 29.9, durationDays: 3,
+    totalMatchLimit: 1, weeklyMatchLimit: 1, weeklyFollowupLimit: 1,
+    exclusive: false, recommendationGuarantee: 1, successReward: 0,
+  },
+  weekly: {
+    id: "weekly", name: "周卡", price: 99, durationDays: 7,
+    totalMatchLimit: 3, weeklyMatchLimit: 3, weeklyFollowupLimit: 2,
+    exclusive: false, recommendationGuarantee: 3, successReward: 0,
+  },
+  monthly: {
+    id: "monthly", name: "月卡", price: 399, durationDays: 30,
+    totalMatchLimit: null, weeklyMatchLimit: 2, weeklyFollowupLimit: null,
+    exclusive: true, recommendationGuarantee: 2, successReward: 100,
+  },
+  quarterly: {
+    id: "quarterly", name: "季卡", price: 999, durationDays: 90,
+    totalMatchLimit: null, weeklyMatchLimit: 2, weeklyFollowupLimit: null,
+    exclusive: true, recommendationGuarantee: 2, successReward: 300,
+  },
+};
+const LEGACY_SERVICE_PLAN = SERVICE_PLANS.monthly;
 
 function serviceWeekKey(date = new Date()) {
   const value = new Date(date);
@@ -20,23 +39,80 @@ function serviceWeekKey(date = new Date()) {
   return value.toISOString().slice(0, 10);
 }
 
-function createServicePlan(start = new Date()) {
+function getServicePlan(planId = "monthly") {
+  return SERVICE_PLANS[planId] || SERVICE_PLANS.monthly;
+}
+
+function createServicePlan(start = new Date(), planId = "monthly", matchmakerId = null) {
+  const definition = getServicePlan(planId);
   const startsAt = new Date(start);
-  const expiresAt = new Date(startsAt.getTime() + SERVICE_DAYS * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(startsAt.getTime() + definition.durationDays * 24 * 60 * 60 * 1000);
   return {
-    id: "weekly-5",
-    name: "每周 5 次人工牵线",
-    price: SERVICE_PRICE,
+    id: definition.id,
+    subscriptionId: `sub_${Date.now().toString(36)}_${crypto.randomBytes(2).toString("hex")}`,
+    name: definition.name,
+    price: definition.price,
+    durationDays: definition.durationDays,
+    exclusive: definition.exclusive,
+    matchmakerId,
+    recommendationGuarantee: definition.recommendationGuarantee,
+    totalMatchLimit: definition.totalMatchLimit,
+    successReward: definition.successReward,
     startsAt: startsAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
-    weeklyMatchLimit: WEEKLY_MATCH_LIMIT,
-    weeklyFollowupLimit: WEEKLY_FOLLOWUP_LIMIT,
+    weeklyMatchLimit: definition.weeklyMatchLimit,
+    weeklyFollowupLimit: definition.weeklyFollowupLimit,
     weekKey: serviceWeekKey(),
     weeklyMatchUsed: 0,
     weeklyFollowupUsed: 0,
+    totalMatchUsed: 0,
     status: "active",
     renewalMode: "manual",
   };
+}
+
+function ensureServiceSubscriptions(user) {
+  if (!Array.isArray(user.servicePlans)) {
+    user.servicePlans = user.servicePlan ? [user.servicePlan] : [];
+  }
+  user.servicePlans = user.servicePlans.map((plan) => {
+    const definition = getServicePlan(plan.id);
+    plan.subscriptionId ||= `sub_legacy_${plan.id}_${user.id}`;
+    plan.weeklyMatchLimit ??= definition.weeklyMatchLimit;
+    plan.weeklyFollowupLimit ??= definition.weeklyFollowupLimit;
+    plan.totalMatchLimit ??= definition.totalMatchLimit;
+    plan.weeklyMatchUsed ||= 0;
+    plan.weeklyFollowupUsed ||= 0;
+    plan.totalMatchUsed ||= 0;
+    if (plan.weekKey !== serviceWeekKey()) {
+      plan.weekKey = serviceWeekKey();
+      plan.weeklyMatchUsed = 0;
+      plan.weeklyFollowupUsed = 0;
+    }
+    return plan;
+  });
+  user.servicePlan = user.servicePlans[user.servicePlans.length - 1] || null;
+  return user.servicePlans;
+}
+
+function ensureMatchmakerMetrics(matchmaker) {
+  if (!matchmaker) return matchmaker;
+  matchmaker.ratingCount ||= 0;
+  matchmaker.ratingTotal ||= 0;
+  matchmaker.serviceScore = Number(matchmaker.serviceScore || (matchmaker.ratingCount ? matchmaker.ratingTotal / matchmaker.ratingCount : 5).toFixed(2));
+  matchmaker.renewalRate ??= 0;
+  matchmaker.avgRecommendationHours ??= 72;
+  matchmaker.completedServiceCount ||= 0;
+  return matchmaker;
+}
+
+function getActiveServicePlan(user, matchmakerId = null) {
+  ensureServiceSubscriptions(user);
+  return user.servicePlans.find((plan) =>
+    plan.status === "active" &&
+    new Date(plan.expiresAt) > new Date() &&
+    (!plan.matchmakerId || !matchmakerId || plan.matchmakerId === matchmakerId)
+  ) || null;
 }
 
 // 敏感词列表（反欺诈：杀猪盘、引流、博彩、违规交易等）
@@ -533,7 +609,10 @@ function publicState(data) {
   return {
     ...data,
     users: (data.users || []).map(({ passwordHash, idCard, ...user }) => user),
-    matchmakers: (data.matchmakers || []).map(({ passwordHash, ...matchmaker }) => matchmaker),
+    matchmakers: (data.matchmakers || []).map((rawMatchmaker) => {
+      const { passwordHash, ...matchmaker } = ensureMatchmakerMetrics({ ...rawMatchmaker });
+      return matchmaker;
+    }),
   };
 }
 
@@ -561,8 +640,8 @@ function ensureUserDefaults(user) {
   }
   user.vip = user.vip || user.vipMatchmakerIds.length > 0;
   if (!user.servicePlan && user.vip) {
-    const expiresAt = user.vipExpiresAt ? new Date(user.vipExpiresAt) : new Date(Date.now() + SERVICE_DAYS * 24 * 60 * 60 * 1000);
-    user.servicePlan = createServicePlan(new Date(expiresAt.getTime() - SERVICE_DAYS * 24 * 60 * 60 * 1000));
+    const expiresAt = user.vipExpiresAt ? new Date(user.vipExpiresAt) : new Date(Date.now() + LEGACY_SERVICE_PLAN.durationDays * 24 * 60 * 60 * 1000);
+    user.servicePlan = createServicePlan(new Date(expiresAt.getTime() - LEGACY_SERVICE_PLAN.durationDays * 24 * 60 * 60 * 1000), "monthly", user.referralMatchmakerId || null);
     user.servicePlan.expiresAt = expiresAt.toISOString();
   }
   if (user.servicePlan) {
@@ -572,11 +651,14 @@ function ensureUserDefaults(user) {
       user.servicePlan.weeklyMatchUsed = 0;
       user.servicePlan.weeklyFollowupUsed = 0;
     }
-    user.servicePlan.weeklyMatchLimit ||= WEEKLY_MATCH_LIMIT;
-    user.servicePlan.weeklyFollowupLimit ||= WEEKLY_FOLLOWUP_LIMIT;
+    const definition = getServicePlan(user.servicePlan.id);
+    user.servicePlan.weeklyMatchLimit ??= definition.weeklyMatchLimit;
+    user.servicePlan.weeklyFollowupLimit ??= definition.weeklyFollowupLimit;
     user.servicePlan.weeklyMatchUsed ||= 0;
     user.servicePlan.weeklyFollowupUsed ||= 0;
+    user.servicePlan.totalMatchUsed ||= 0;
   }
+  ensureServiceSubscriptions(user);
   return user;
 }
 
@@ -1687,7 +1769,7 @@ app.get("/api/client/verify-status", requireAuth(["client"]), async (request, re
 // 3. 客户：卡密兑换/付费 VIP
 app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, response) => {
   const userId = request.user.sub;
-  const { code, referralCode } = request.body || {};
+  const { code, referralCode, planId = "monthly" } = request.body || {};
   const client = await pool.connect();
   
   try {
@@ -1701,6 +1783,7 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
     const user = ensureUserDefaults(userRes.rows[0].raw);
 
     let matchmakerId = null;
+    let selectedPlanId = SERVICE_PLANS[planId] ? planId : "monthly";
 
     if (code) {
       // 兑换码核销
@@ -1726,6 +1809,7 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
       if (promo.matchmakerId) {
         matchmakerId = promo.matchmakerId;
       }
+      if (promo.planId && SERVICE_PLANS[promo.planId]) selectedPlanId = promo.planId;
     } else if (referralCode) {
       // 推荐码支付
       const mmRes = await client.query("select id from matchmakers where upper(code) = upper($1)", [referralCode.trim()]);
@@ -1739,12 +1823,25 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
       return response.status(400).json({ error: "code_or_referral_code_required" });
     }
 
-    // 开通 30 天服务订单：每周 5 次牵线 + 5 次人工跟进
+    const definition = getServicePlan(selectedPlanId);
+    ensureServiceSubscriptions(user);
+    const activeLongPlan = user.servicePlans.find((plan) =>
+      plan.status === "active" && new Date(plan.expiresAt) > new Date() && plan.exclusive
+    );
+    if (definition.exclusive && activeLongPlan && activeLongPlan.matchmakerId && activeLongPlan.matchmakerId !== matchmakerId) {
+      await client.query("rollback");
+      return response.status(409).json({ error: "exclusive_matchmaker_plan_exists", message: "月卡/季卡服务期内只能绑定 1 位专属红娘，请先到期或更换红娘" });
+    }
+
+    // 订阅服务订单：短周期可同时购买多位红娘，长周期仅保留一位专属红娘
     user.vip = true;
-    const currentExpiry = user.servicePlan?.expiresAt && new Date(user.servicePlan.expiresAt) > new Date()
-      ? new Date(user.servicePlan.expiresAt)
-      : new Date();
-    user.servicePlan = createServicePlan(currentExpiry);
+    const currentPlan = definition.exclusive && activeLongPlan && activeLongPlan.matchmakerId === matchmakerId ? activeLongPlan : null;
+    const currentExpiry = currentPlan ? new Date(currentPlan.expiresAt) : new Date();
+    const newPlan = createServicePlan(currentExpiry, selectedPlanId, matchmakerId);
+    user.servicePlans = currentPlan
+      ? user.servicePlans.map((plan) => plan.subscriptionId === currentPlan.subscriptionId ? newPlan : plan)
+      : [...user.servicePlans, newPlan];
+    user.servicePlan = newPlan;
     user.vipExpiresAt = user.servicePlan.expiresAt.slice(0, 10);
     if (matchmakerId) upsertUserVipMatchmaker(user, matchmakerId);
     await client.query(
@@ -1757,12 +1854,12 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
     const deal = {
       id: dealId,
       requestId: null,
-      amount: SERVICE_PRICE,
+      amount: definition.price,
       createdAt: new Date().toISOString().slice(0, 10)
     };
     await client.query(
       "insert into deals (id, request_id, amount, created_at, raw) values ($1, $2, $3, $4, $5::jsonb)",
-      [dealId, null, SERVICE_PRICE, deal.createdAt, JSON.stringify({ ...deal, servicePlan: user.servicePlan })]
+      [dealId, null, definition.price, deal.createdAt, JSON.stringify({ ...deal, planId: selectedPlanId, servicePlan: user.servicePlan })]
     );
 
     await client.query("commit");
@@ -1787,13 +1884,6 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
   if (fromUserRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
   const fromUser = ensureUserDefaults(fromUserRes.rows[0].raw);
 
-  if (!fromUser.servicePlan || fromUser.servicePlan.status !== "active" || new Date(fromUser.servicePlan.expiresAt) <= new Date()) {
-    return response.status(402).json({ error: "service_plan_required", message: "请先购买有效的牵线服务包" });
-  }
-  if (fromUser.servicePlan.weeklyMatchUsed >= fromUser.servicePlan.weeklyMatchLimit) {
-    return response.status(429).json({ error: "weekly_match_quota_exhausted", message: "本周 5 次牵线额度已用完，下周自动恢复" });
-  }
-
   const toUserRes = await pool.query("select raw from users where id = $1", [targetUserId]);
   if (toUserRes.rows.length === 0) return response.status(404).json({ error: "target_not_found" });
   const toUser = ensureUserDefaults(toUserRes.rows[0].raw);
@@ -1805,6 +1895,17 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
   if (!matchmakerId) return response.status(400).json({ error: "matchmaker_required" });
   if (!fromUser.vipMatchmakerIds.includes(matchmakerId)) return response.status(403).json({ error: "matchmaker_vip_required" });
   if (!toUser.delegatedMatchmakerIds.includes(matchmakerId)) return response.status(400).json({ error: "target_not_bound_to_matchmaker" });
+
+  const requestedPlan = getActiveServicePlan(fromUser, matchmakerId);
+  if (!requestedPlan) {
+    return response.status(402).json({ error: "service_plan_required", message: "请先购买有效的红娘服务包" });
+  }
+  if (requestedPlan.totalMatchLimit !== null && requestedPlan.totalMatchUsed >= requestedPlan.totalMatchLimit) {
+    return response.status(429).json({ error: "match_quota_exhausted", message: `${requestedPlan.name}的牵线额度已用完` });
+  }
+  if (requestedPlan.weeklyMatchLimit !== null && requestedPlan.weeklyMatchUsed >= requestedPlan.weeklyMatchLimit) {
+    return response.status(429).json({ error: "weekly_match_quota_exhausted", message: `${requestedPlan.name}本周期推荐额度已用完` });
+  }
 
   const duplicateRes = await pool.query(
     "select 1 from match_requests where from_user_id = $1 and to_user_id = $2 and matchmaker_id = $3 and status != '已完成'",
@@ -1821,6 +1922,7 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     maleContacted: false,
     femaleContacted: false,
     memberChatEnabled: false,
+    servicePlanId: requestedPlan.subscriptionId,
     serviceStage: "待首次推荐",
     followupCount: 0,
     matchOutcome: null,
@@ -1833,7 +1935,8 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     createdAt: new Date().toISOString()
   };
 
-  fromUser.servicePlan.weeklyMatchUsed += 1;
+  requestedPlan.weeklyMatchUsed += 1;
+  requestedPlan.totalMatchUsed += 1;
   await pool.query("update users set raw = $1, updated_at = now() where id = $2", [JSON.stringify(fromUser), userId]);
 
   await pool.query(
@@ -2029,25 +2132,27 @@ app.patch("/api/matchmaker/requests/:id/service-progress", requireAuth(["matchma
   const fromRes = await pool.query("select raw from users where id = $1", [req.fromUserId]);
   const customer = fromRes.rows[0] ? ensureUserDefaults(fromRes.rows[0].raw) : null;
   if (!customer) return response.status(404).json({ error: "customer_not_found" });
+  const servicePlan = customer.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer.servicePlan;
 
   req.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
   if (action === "follow_up") {
-    if (!customer.servicePlan || customer.servicePlan.weeklyFollowupUsed >= customer.servicePlan.weeklyFollowupLimit) {
-      return response.status(429).json({ error: "weekly_followup_quota_exhausted", message: "用户本周跟进额度已用完" });
+    if (!servicePlan || (servicePlan.weeklyFollowupLimit !== null && servicePlan.weeklyFollowupUsed >= servicePlan.weeklyFollowupLimit)) {
+      return response.status(429).json({ error: "weekly_followup_quota_exhausted", message: "该服务包的跟进权益已用完" });
     }
-    customer.servicePlan.weeklyFollowupUsed += 1;
+    servicePlan.weeklyFollowupUsed += 1;
     req.followupCount = Number(req.followupCount || 0) + 1;
     req.serviceStage = "红娘持续跟进中";
-    req.rewardLedger.followup = Number(req.rewardLedger.followup || 0) + 10;
+    req.rewardLedger.followup = 0;
   } else if (action === "effective_match") {
     req.serviceStage = "已完成有效匹配";
     req.matchOutcome = "effective";
-    req.rewardLedger.effectiveMatch = 50;
+    req.rewardLedger.effectiveMatch = 0;
   } else if (action === "not_fit") {
     req.serviceStage = "不合适，等待重新匹配";
     req.matchOutcome = "not_fit";
     if (!req.matchCreditReturned) {
-      customer.servicePlan.weeklyMatchUsed = Math.max(0, Number(customer.servicePlan.weeklyMatchUsed || 0) - 1);
+      servicePlan.weeklyMatchUsed = Math.max(0, Number(servicePlan.weeklyMatchUsed || 0) - 1);
+      servicePlan.totalMatchUsed = Math.max(0, Number(servicePlan.totalMatchUsed || 0) - 1);
       req.matchCreditReturned = true;
     }
   } else {
@@ -2068,12 +2173,39 @@ app.patch("/api/client/match-requests/:id/outcome", requireAuth(["client"]), asy
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (![req.fromUserId, req.toUserId].includes(request.user.sub)) return response.status(403).json({ error: "forbidden" });
+  const customerRes = await pool.query("select raw from users where id = $1", [req.fromUserId]);
+  const customer = customerRes.rows[0] ? ensureUserDefaults(customerRes.rows[0].raw) : null;
+  const servicePlan = customer?.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer?.servicePlan;
   req.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
   req.serviceStage = "双方稳定发展（用户确认）";
   req.matchOutcome = outcome;
-  req.rewardLedger.success = 150;
+  req.rewardLedger.success = Number(servicePlan?.successReward || 0);
   req.rewardLedger.status = "eligible";
   await pool.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
+  response.json({ request: req, state: publicState(await readState()) });
+});
+
+// 服务完成后由会员评价红娘，评分用于曝光和接单排序
+app.patch("/api/client/match-requests/:id/rating", requireAuth(["client"]), async (request, response) => {
+  const requestId = request.params.id;
+  const rating = Number(request.body?.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return response.status(400).json({ error: "rating_invalid" });
+  const reqRes = await pool.query("select raw from match_requests where id = $1", [requestId]);
+  if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
+  const req = ensureRequestDefaults(reqRes.rows[0].raw);
+  if (![req.fromUserId, req.toUserId].includes(request.user.sub)) return response.status(403).json({ error: "forbidden" });
+  if (req.customerRating) return response.status(409).json({ error: "rating_already_submitted" });
+  req.customerRating = rating;
+  req.customerFeedback = String(request.body?.comment || "").trim().slice(0, 500);
+  await pool.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
+  const mmRes = await pool.query("select raw from matchmakers where id = $1", [req.matchmakerId]);
+  if (mmRes.rows[0]) {
+    const mm = mmRes.rows[0].raw;
+    mm.ratingCount = Number(mm.ratingCount || 0) + 1;
+    mm.ratingTotal = Number(mm.ratingTotal || 0) + rating;
+    mm.serviceScore = Number((mm.ratingTotal / mm.ratingCount).toFixed(2));
+    await pool.query("update matchmakers set raw = $1, updated_at = now() where id = $2", [JSON.stringify(mm), req.matchmakerId]);
+  }
   response.json({ request: req, state: publicState(await readState()) });
 });
 

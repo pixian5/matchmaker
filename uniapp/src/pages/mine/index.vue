@@ -31,7 +31,7 @@
         <view class="arrow" v-else>></view>
       </view>
       <view class="list-item" @click="navigateTo('/pages/vip/index')">
-        <text class="title">VIP 会员</text>
+        <text class="title">红娘服务订阅</text>
         <text class="status gold" v-if="userStore.vipActive">已开通</text>
         <view class="arrow" v-else>></view>
       </view>

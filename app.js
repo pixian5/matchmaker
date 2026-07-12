@@ -1,9 +1,13 @@
 const STORAGE_KEY = "matchmaker-dating-demo-v1";
 const SESSION_KEY = `${STORAGE_KEY}:session`;
 const VIP_PRICE = 399;
+const SERVICE_PLANS = {
+  trial_3d: { id: "trial_3d", name: "3天体验卡", price: 29.9, durationDays: 3, totalMatchLimit: 1, weeklyMatchLimit: 1, weeklyFollowupLimit: 1, successReward: 0 },
+  weekly: { id: "weekly", name: "周卡", price: 99, durationDays: 7, totalMatchLimit: 3, weeklyMatchLimit: 3, weeklyFollowupLimit: 2, successReward: 0 },
+  monthly: { id: "monthly", name: "月卡", price: 399, durationDays: 30, totalMatchLimit: null, weeklyMatchLimit: 2, weeklyFollowupLimit: null, successReward: 100 },
+  quarterly: { id: "quarterly", name: "季卡", price: 999, durationDays: 90, totalMatchLimit: null, weeklyMatchLimit: 2, weeklyFollowupLimit: null, successReward: 300 },
+};
 const SERVICE_DAYS = 30;
-const WEEKLY_MATCH_LIMIT = 5;
-const WEEKLY_FOLLOWUP_LIMIT = 5;
 const API_BASE = "/api";
 let currentDiscoverIndex = 0;
 let activeMiniChatThreadId = null;
@@ -236,21 +240,29 @@ function ensureStateDefaults(s) {
     }
     u.vip = u.vip || u.vipMatchmakerIds.length > 0;
     if (u.vip && !u.servicePlan) {
+      const legacyPlan = SERVICE_PLANS.monthly;
       u.servicePlan = {
-        id: "weekly-5",
-        name: "每周 5 次人工牵线",
-        price: VIP_PRICE,
+        id: legacyPlan.id,
+        subscriptionId: `legacy_${u.id}`,
+        name: legacyPlan.name,
+        price: legacyPlan.price,
+        durationDays: legacyPlan.durationDays,
+        matchmakerId: u.referralMatchmakerId || null,
+        totalMatchLimit: legacyPlan.totalMatchLimit,
+        successReward: legacyPlan.successReward,
         startsAt: new Date().toISOString(),
         expiresAt: u.vipExpiresAt || new Date(Date.now() + SERVICE_DAYS * 86400000).toISOString(),
-        weeklyMatchLimit: WEEKLY_MATCH_LIMIT,
-        weeklyFollowupLimit: WEEKLY_FOLLOWUP_LIMIT,
+        weeklyMatchLimit: legacyPlan.weeklyMatchLimit,
+        weeklyFollowupLimit: legacyPlan.weeklyFollowupLimit,
         weekKey: new Date().toISOString().slice(0, 10),
         weeklyMatchUsed: 0,
         weeklyFollowupUsed: 0,
+        totalMatchUsed: 0,
         status: "active",
         renewalMode: "manual",
       };
     }
+    if (!Array.isArray(u.servicePlans)) u.servicePlans = u.servicePlan ? [u.servicePlan] : [];
   });
   // Ensure u1 has phone and email, u2 has only email (no phone) to test phone supplement
   const u1 = s.users.find((u) => u.id === "u1");
@@ -922,40 +934,59 @@ function currentUser() {
   return state.users.find((user) => user.id === session.currentUserId);
 }
 
-function getServiceUsage(user) {
-  const plan = user?.servicePlan;
+function getServiceUsage(user, matchmakerId = null) {
+  const plans = Array.isArray(user?.servicePlans) ? user.servicePlans : user?.servicePlan ? [user.servicePlan] : [];
+  const plan = plans.find((item) => item.status === "active" && new Date(item.expiresAt) > new Date() && (!matchmakerId || !item.matchmakerId || item.matchmakerId === matchmakerId)) || null;
   if (!plan) return { plan: null, matchRemaining: 0, followupRemaining: 0, active: false };
   const active = plan.status === "active" && new Date(plan.expiresAt) > new Date();
   return {
     plan,
     active,
-    matchRemaining: Math.max(0, Number(plan.weeklyMatchLimit || WEEKLY_MATCH_LIMIT) - Number(plan.weeklyMatchUsed || 0)),
-    followupRemaining: Math.max(0, Number(plan.weeklyFollowupLimit || WEEKLY_FOLLOWUP_LIMIT) - Number(plan.weeklyFollowupUsed || 0)),
+    matchRemaining: plan.totalMatchLimit !== null && plan.totalMatchLimit !== undefined
+      ? Math.max(0, Number(plan.totalMatchLimit) - Number(plan.totalMatchUsed || 0))
+      : Math.max(0, Number(plan.weeklyMatchLimit || 0) - Number(plan.weeklyMatchUsed || 0)),
+    followupRemaining: plan.weeklyFollowupLimit === null
+      ? "不限"
+      : Math.max(0, Number(plan.weeklyFollowupLimit || 0) - Number(plan.weeklyFollowupUsed || 0)),
   };
 }
 
-function activateLocalServicePlan(user) {
+function activateLocalServicePlan(user, planId = "monthly", matchmakerId = null) {
+  const definition = SERVICE_PLANS[planId] || SERVICE_PLANS.monthly;
   const now = new Date();
-  const currentExpiry = user.servicePlan?.expiresAt && new Date(user.servicePlan.expiresAt) > now
-    ? new Date(user.servicePlan.expiresAt)
-    : now;
-  const expires = new Date(currentExpiry.getTime() + SERVICE_DAYS * 86400000);
-  user.servicePlan = {
-    id: "weekly-5",
-    name: "每周 5 次人工牵线",
-    price: VIP_PRICE,
+  if (!Array.isArray(user.servicePlans)) user.servicePlans = user.servicePlan ? [user.servicePlan] : [];
+  const current = definition.durationDays >= 30
+    ? user.servicePlans.find((item) => item.id === planId && item.matchmakerId === matchmakerId && new Date(item.expiresAt) > now)
+    : null;
+  const currentExpiry = current ? new Date(current.expiresAt) : now;
+  const expires = new Date(currentExpiry.getTime() + definition.durationDays * 86400000);
+  const plan = {
+    id: definition.id,
+    subscriptionId: `sub_${Date.now().toString(36)}`,
+    name: definition.name,
+    price: definition.price,
+    durationDays: definition.durationDays,
+    matchmakerId,
+    totalMatchLimit: definition.totalMatchLimit,
+    successReward: definition.successReward,
     startsAt: now.toISOString(),
     expiresAt: expires.toISOString(),
-    weeklyMatchLimit: WEEKLY_MATCH_LIMIT,
-    weeklyFollowupLimit: WEEKLY_FOLLOWUP_LIMIT,
+    weeklyMatchLimit: definition.weeklyMatchLimit,
+    weeklyFollowupLimit: definition.weeklyFollowupLimit,
     weekKey: now.toISOString().slice(0, 10),
     weeklyMatchUsed: 0,
     weeklyFollowupUsed: 0,
+    totalMatchUsed: 0,
     status: "active",
     renewalMode: "manual",
   };
+  user.servicePlans = current
+    ? user.servicePlans.map((item) => item.subscriptionId === current.subscriptionId ? plan : item)
+    : [...user.servicePlans, plan];
+  user.servicePlan = plan;
   user.vip = true;
   user.vipExpiresAt = expires.toISOString().slice(0, 10);
+  return plan;
 }
 
 function currentMatchmaker() {
@@ -1462,6 +1493,12 @@ function renderMiniApp() {
   if (!$("#vipState")) return;
   const user = currentUser();
   renderVipMatchmakers();
+  const planSelect = $("#servicePlanSelect");
+  if (planSelect && !planSelect.options.length) {
+    planSelect.innerHTML = Object.values(SERVICE_PLANS)
+      .map((plan) => `<option value="${plan.id}">${plan.name} ¥${plan.price}</option>`)
+      .join("");
+  }
 
   if (user) {
     const referralInput = $("#referralCodeInput");
@@ -1480,7 +1517,7 @@ function renderMiniApp() {
   
   // VIP Badge
   const headerVipCount = user ? getUserVipMatchmakerIds(user).length : 0;
-  $("#vipState").textContent = user ? (headerVipCount ? `${headerVipCount} 位红娘 VIP` : "普通用户") : "游客访客";
+  $("#vipState").textContent = user ? (headerVipCount ? `${headerVipCount} 位服务红娘` : "普通用户") : "游客访客";
   $("#vipState").style.background = user ? (headerVipCount ? "#d9f7e8" : "#fff1c7") : "#eef2f5";
   $("#vipState").style.color = user ? (headerVipCount ? "#166534" : "#7a4a08") : "#6d7785";
 
@@ -1503,12 +1540,13 @@ function renderMiniApp() {
       const code = referralInput ? referralInput.value.trim() : "";
       const m = state.matchmakers.find(item => item.code.toUpperCase() === code.toUpperCase());
       
-      if (m && !isVipForMatchmaker(user, m.id)) {
-        becomeVipBtn.textContent = "为该红娘开通 VIP";
+      if (m) {
+        const planName = SERVICE_PLANS[$("#servicePlanSelect")?.value || "monthly"]?.name || "服务包";
+        becomeVipBtn.textContent = isVipForMatchmaker(user, m.id) ? `购买/续费${planName}` : `购买${planName}`;
         becomeVipBtn.disabled = false;
         becomeVipBtn.style.background = ""; 
       } else {
-        becomeVipBtn.textContent = m ? "已是该红娘 VIP" : "已是会员";
+        becomeVipBtn.textContent = "请选择服务红娘";
         becomeVipBtn.disabled = true;
         becomeVipBtn.style.background = "#9ca3af"; 
       }
@@ -1609,7 +1647,7 @@ function renderMineTabContent() {
     
     const badge = $("#miniMineVip");
     const vipMatchmakerIds = getUserVipMatchmakerIds(user);
-    badge.textContent = vipMatchmakerIds.length ? `${vipMatchmakerIds.length} 位红娘 VIP` : "普通用户";
+    badge.textContent = vipMatchmakerIds.length ? `${vipMatchmakerIds.length} 位服务红娘` : "普通用户";
     badge.style.background = user.vip ? "#d9f7e8" : "#fff1c7";
     badge.style.color = user.vip ? "#166534" : "#7a4a08";
 
@@ -1625,11 +1663,11 @@ function renderMineTabContent() {
     const serviceSummary = $("#servicePlanSummary");
     if (serviceSummary) {
       serviceSummary.innerHTML = service.active
-        ? `<strong style="display:block; margin-bottom:6px;">当前服务：每周 5 次人工牵线</strong>
-           <div class="muted">本周剩余：牵线 <b>${service.matchRemaining}</b> 次 · 跟进 <b>${service.followupRemaining}</b> 次</div>
-           <div class="muted" style="margin-top:4px;">服务到期：${new Date(service.plan.expiresAt).toLocaleDateString("zh-CN")} · 不合适可申请返还牵线额度</div>`
-        : `<strong style="display:block; margin-bottom:6px;">开通人工牵线服务</strong>
-           <div class="muted">¥399 / 30 天 · 每周 5 次牵线 + 5 次人工跟进</div>`;
+        ? `<strong style="display:block; margin-bottom:6px;">当前服务：${service.plan.name}</strong>
+           <div class="muted">剩余推荐：<b>${service.matchRemaining}</b> 位 · 跟进：<b>${service.followupRemaining}</b> 次</div>
+           <div class="muted" style="margin-top:4px;">服务到期：${new Date(service.plan.expiresAt).toLocaleDateString("zh-CN")} · 不合适可申请驳回，不计入保底</div>`
+        : `<strong style="display:block; margin-bottom:6px;">先用体验卡试试红娘</strong>
+           <div class="muted">3天体验卡 ¥29.9 · 1 次经审核推荐 · 满意后再升级周卡/月卡/季卡</div>`;
     }
 
     // 动态设置功能选项菜单内容
@@ -1867,15 +1905,15 @@ async function createRequest(targetUserId, matchmakerId) {
     return;
   }
 
-  const vipReady = await ensureVipForMatchmaker(selectedMatchmakerId);
+  const vipReady = await ensureVipForMatchmaker(selectedMatchmakerId, $("#servicePlanSelect")?.value || "monthly");
   if (!vipReady) return;
-  const usage = getServiceUsage(user);
+  const usage = getServiceUsage(user, selectedMatchmakerId);
   if (!usage.active) {
     showToast("请先购买有效的牵线服务包");
     return;
   }
   if (usage.matchRemaining <= 0) {
-    showToast("本周 5 次牵线额度已用完，下周自动恢复");
+    showToast(`${usage.plan?.name || "当前服务包"}的推荐额度已用完`);
     return;
   }
 
@@ -1922,13 +1960,15 @@ async function createRequest(targetUserId, matchmakerId) {
       maleContacted: false,
       femaleContacted: false,
       memberChatEnabled: false,
+      servicePlanId: usage.plan.subscriptionId,
       serviceStage: "待首次推荐",
       followupCount: 0,
       matchOutcome: null,
       rewardLedger: { effectiveMatch: 0, followup: 0, success: 0, status: "pending" },
       createdAt: new Date().toISOString(),
     };
-    user.servicePlan.weeklyMatchUsed = Number(user.servicePlan.weeklyMatchUsed || 0) + 1;
+    usage.plan.weeklyMatchUsed = Number(usage.plan.weeklyMatchUsed || 0) + 1;
+    usage.plan.totalMatchUsed = Number(usage.plan.totalMatchUsed || 0) + 1;
     state.requests.unshift(newRequest);
     if (selectedMatchmakerId) {
       createLocalThread("member_matchmaker", newRequest);
@@ -1984,6 +2024,9 @@ function renderRequests() {
         const outcomeAction = request.matchOutcome === "stable_progress"
           ? `<div class="muted" style="margin-top:8px; color:#166534;">✓ 你已确认双方稳定发展，红娘获得成功服务奖励</div>`
           : `<button class="ghost-button size-sm" data-confirm-stable="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; margin-top: 8px;" type="button">确认双方稳定发展</button>`;
+        const ratingAction = request.customerRating
+          ? `<div class="muted" style="margin-top:6px;">服务评价：${"★".repeat(request.customerRating)}${"☆".repeat(5 - request.customerRating)}</div>`
+          : `<button class="ghost-button size-sm" data-rate-request="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; margin-top: 8px;" type="button">评价红娘服务</button>`;
         return `
           <article class="request-card">
             <span class="status-pill">${request.status}</span>
@@ -1993,6 +2036,7 @@ function renderRequests() {
             ${unlockedWechat}
             ${memberChatStatus}
             ${outcomeAction}
+            ${ratingAction}
             <div style="display: flex; gap: 8px; margin-top: 10px;">
               <button class="primary-button size-sm" data-chat-with-mm="${request.id}" style="padding: 6px 12px; font-size: 12px; min-height: auto; width: auto; margin-bottom: 0;" type="button">💬 联系红娘</button>
               ${memberChatAction}
@@ -2138,6 +2182,7 @@ function renderMiniChatSections(user, requests) {
 
 async function becomeVip() {
   const code = $("#referralCodeInput").value.trim();
+  const planId = $("#servicePlanSelect")?.value || "monthly";
   const matchmaker = state.matchmakers.find(
     (item) => item.code.toUpperCase() === code.toUpperCase(),
   );
@@ -2152,7 +2197,7 @@ async function becomeVip() {
       const res = await fetch(`${API_BASE}/client/vip/redeem`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ referralCode: code })
+        body: JSON.stringify({ referralCode: code, planId })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -2170,11 +2215,11 @@ async function becomeVip() {
     }
   } else {
     addVipMatchmaker(user, matchmaker.id);
-    activateLocalServicePlan(user);
+    activateLocalServicePlan(user, planId, matchmaker.id);
     state.deals.unshift({
       id: uid("d"),
       requestId: null,
-      amount: VIP_PRICE,
+      amount: SERVICE_PLANS[planId]?.price || VIP_PRICE,
       createdAt: new Date().toISOString().slice(0, 10),
     });
     saveState();
@@ -2182,11 +2227,12 @@ async function becomeVip() {
     showToast(`已开通 VIP，推广红娘为${matchmaker.name}`);
   }
 
-  const promoComm = (VIP_PRICE * (state.splits.promo / 100)).toFixed(2);
-  const matchComm = (VIP_PRICE * (state.splits.matchmaker / 100)).toFixed(2);
-  const platformComm = (VIP_PRICE * (state.splits.platform / 100)).toFixed(2);
+  const price = SERVICE_PLANS[planId]?.price || VIP_PRICE;
+  const promoComm = (price * (state.splits.promo / 100)).toFixed(2);
+  const matchComm = (price * (state.splits.matchmaker / 100)).toFixed(2);
+  const platformComm = (price * (state.splits.platform / 100)).toFixed(2);
 
-  logEvent("deal", `客户 '${user.name}' 开通 VIP 成功 (金额: ¥${VIP_PRICE})，绑定推荐红娘: '${matchmaker.name}'`);
+  logEvent("deal", `客户 '${user.name}' 购买${SERVICE_PLANS[planId]?.name || "服务包"}成功 (金额: ¥${price})，绑定红娘: '${matchmaker.name}'`);
   logEvent("deal", `[佣金结算] 介绍推广分成: ¥${promoComm} (${state.splits.promo}%)，红娘牵线分成: ¥${matchComm} (${state.splits.matchmaker}%)，平台收益: ¥${platformComm} (${state.splits.platform}%)`);
 
   showPushNotification("【VIP会员开通通知】", {
@@ -2204,7 +2250,7 @@ async function becomeVip() {
   });
 }
 
-async function ensureVipForMatchmaker(matchmakerId) {
+async function ensureVipForMatchmaker(matchmakerId, planId = "monthly") {
   const user = currentUser();
   const matchmaker = getMatchmaker(matchmakerId);
   if (!user || !matchmaker) return false;
@@ -2215,7 +2261,7 @@ async function ensureVipForMatchmaker(matchmakerId) {
       const res = await fetch(`${API_BASE}/client/vip/redeem`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ referralCode: matchmaker.code })
+        body: JSON.stringify({ referralCode: matchmaker.code, planId })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -2231,17 +2277,17 @@ async function ensureVipForMatchmaker(matchmakerId) {
     }
   } else {
     addVipMatchmaker(user, matchmakerId);
-    activateLocalServicePlan(user);
+    activateLocalServicePlan(user, planId, matchmakerId);
     state.deals.unshift({
       id: uid("d"),
       requestId: null,
-      amount: VIP_PRICE,
+      amount: SERVICE_PLANS[planId]?.price || VIP_PRICE,
       createdAt: new Date().toISOString().slice(0, 10),
     });
     saveState();
   }
 
-  showToast(`已成为${matchmaker.name}的专属 VIP`);
+  showToast(`已购买${SERVICE_PLANS[planId]?.name || "服务包"}，服务红娘为${matchmaker.name}`);
   return true;
 }
 
@@ -2267,7 +2313,7 @@ function renderVipMatchmakers(filterKeyword = "") {
     html += filtered
       .map((m) => {
         const agency = getAgency(m.agencyId);
-        const labelText = `${m.name} [${m.code}] (${agency?.name || "未知机构"})`;
+        const labelText = `${m.name} [${m.code}] · 评分 ${(m.serviceScore || 5).toFixed?.(1) || "5.0"} · ${agency?.name || "未知机构"}`;
         const isSelected = m.code === currentVal;
         return `<li data-value="${m.code}" data-label="${labelText}" class="${isSelected ? "selected" : ""}">
           ${labelText}
@@ -2280,6 +2326,7 @@ function renderVipMatchmakers(filterKeyword = "") {
 
 async function redeemVip() {
   const rawCode = $("#vipPromoCodeInput").value.trim().toUpperCase();
+  const selectedPlanId = $("#servicePlanSelect")?.value || "monthly";
   if (!rawCode) {
     showToast("请输入兑换码！");
     return;
@@ -2313,7 +2360,7 @@ async function redeemVip() {
       const res = await fetch(`${API_BASE}/client/vip/redeem`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ code: rawCode })
+        body: JSON.stringify({ code: rawCode, planId: promoCode.planId || selectedPlanId })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -2341,8 +2388,6 @@ async function redeemVip() {
       promoCode.usedBy = user.id;
     }
 
-    activateLocalServicePlan(user);
-    
     if (redeemBtn) {
       redeemBtn.textContent = "有效";
       redeemBtn.style.background = "#10b981"; // green
@@ -2353,15 +2398,17 @@ async function redeemVip() {
       matchmaker = getMatchmaker(promoCode.matchmakerId);
       if (matchmaker) {
         addVipMatchmaker(user, matchmaker.id);
+        activateLocalServicePlan(user, promoCode.planId || selectedPlanId, matchmaker.id);
       }
     } else {
       user.vip = true;
+      activateLocalServicePlan(user, promoCode.planId || selectedPlanId, null);
     }
 
     state.deals.unshift({
       id: uid("d"),
       requestId: null,
-      amount: VIP_PRICE,
+      amount: SERVICE_PLANS[promoCode.planId || selectedPlanId]?.price || VIP_PRICE,
       createdAt: new Date().toISOString().slice(0, 10),
     });
 
@@ -2376,10 +2423,11 @@ async function redeemVip() {
   }
 
   if (matchmaker) {
-    showToast(`兑换成功！专属红娘为${matchmaker.name}`);
-    const promoComm = (VIP_PRICE * (state.splits.promo / 100)).toFixed(2);
-    const matchComm = (VIP_PRICE * (state.splits.matchmaker / 100)).toFixed(2);
-    const platformComm = (VIP_PRICE * (state.splits.platform / 100)).toFixed(2);
+    const redeemedPlan = SERVICE_PLANS[promoCode.planId || selectedPlanId] || SERVICE_PLANS.monthly;
+    showToast(`兑换成功！${redeemedPlan.name}服务红娘为${matchmaker.name}`);
+    const promoComm = (redeemedPlan.price * (state.splits.promo / 100)).toFixed(2);
+    const matchComm = (redeemedPlan.price * (state.splits.matchmaker / 100)).toFixed(2);
+    const platformComm = (redeemedPlan.price * (state.splits.platform / 100)).toFixed(2);
 
     logEvent("deal", `客户 '${user.name}' 使用兑换码 '${rawCode}' 成功开通 VIP 会员，关联推荐红娘: '${matchmaker.name}'`);
     logEvent("deal", `[佣金结算] 介绍推广分成: ¥${promoComm} (${state.splits.promo}%)，红娘牵线分成: ¥${matchComm} (${state.splits.matchmaker}%)，平台收益: ¥${platformComm} (${state.splits.platform}%)`);
@@ -2533,7 +2581,8 @@ function renderMatchmakerDesk() {
   $("#matchmakerWorkbench").style.display = "block";
 
   const mm = getMatchmaker(mmId);
-  $("#matchmakerWelcomeTitle").textContent = `红娘工作台 - 当前红娘：${mm?.name || "未登录"}`;
+  const mmRating = Number(mm?.serviceScore || 0).toFixed(1);
+  $("#matchmakerWelcomeTitle").textContent = `红娘工作台 - 当前红娘：${mm?.name || "未登录"} · 服务评分 ${mmRating} · 评价 ${mm?.ratingCount || 0} 次`;
 
   const requests = state.requests.filter(
     (request) => request.matchmakerId === mmId,
@@ -2868,28 +2917,30 @@ async function updateServiceProgress(requestId, action) {
     }
   } else {
     const customer = state.users.find((item) => item.id === request.fromUserId);
+    const servicePlan = customer?.servicePlans?.find((item) => item.subscriptionId === request.servicePlanId) || customer?.servicePlan;
     request.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
     if (action === "follow_up") {
-      const usage = getServiceUsage(customer);
+      const usage = getServiceUsage(customer, request.matchmakerId);
       if (usage.followupRemaining <= 0) return showToast("本周跟进额度已用完");
-      customer.servicePlan.weeklyFollowupUsed = Number(customer.servicePlan.weeklyFollowupUsed || 0) + 1;
+      servicePlan.weeklyFollowupUsed = Number(servicePlan.weeklyFollowupUsed || 0) + 1;
       request.followupCount = Number(request.followupCount || 0) + 1;
       request.serviceStage = "红娘持续跟进中";
-      request.rewardLedger.followup += 10;
+      request.rewardLedger.followup = 0;
     } else if (action === "effective_match") {
       request.serviceStage = "已完成有效匹配";
       request.matchOutcome = "effective";
-      request.rewardLedger.effectiveMatch = 50;
+      request.rewardLedger.effectiveMatch = 0;
     } else if (action === "stable_progress") {
       request.serviceStage = "双方稳定发展（用户确认）";
       request.matchOutcome = "stable_progress";
-      request.rewardLedger.success = 150;
+      request.rewardLedger.success = Number(servicePlan?.successReward || 0);
       request.rewardLedger.status = "eligible";
     } else if (action === "not_fit") {
       request.serviceStage = "不合适，等待重新匹配";
       request.matchOutcome = "not_fit";
       if (!request.matchCreditReturned) {
-        customer.servicePlan.weeklyMatchUsed = Math.max(0, Number(customer.servicePlan.weeklyMatchUsed || 0) - 1);
+        servicePlan.weeklyMatchUsed = Math.max(0, Number(servicePlan.weeklyMatchUsed || 0) - 1);
+        servicePlan.totalMatchUsed = Math.max(0, Number(servicePlan.totalMatchUsed || 0) - 1);
         request.matchCreditReturned = true;
       }
     }
@@ -2924,12 +2975,54 @@ async function confirmStableProgress(requestId) {
     request.serviceStage = "双方稳定发展（用户确认）";
     request.matchOutcome = "stable_progress";
     request.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
-    request.rewardLedger.success = 150;
+    const customer = state.users.find((item) => item.id === request.fromUserId);
+    const plan = customer?.servicePlans?.find((item) => item.subscriptionId === request.servicePlanId) || customer?.servicePlan;
+    request.rewardLedger.success = Number(plan?.successReward || 0);
     request.rewardLedger.status = "eligible";
     saveState();
   }
   renderAll();
   showToast("已确认稳定发展，感谢红娘持续跟进");
+}
+
+async function rateMatchmaker(requestId) {
+  const rating = Number(window.prompt("请给本次红娘服务评分（1-5分）", "5"));
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    showToast("请输入 1-5 的整数评分");
+    return;
+  }
+  const request = getRequestById(requestId);
+  if (!request) return;
+  if (apiAvailable) {
+    try {
+      const res = await fetch(`${API_BASE}/client/match-requests/${requestId}/rating`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ rating }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || err.error || "failed");
+      }
+      const data = await res.json();
+      state = data.state;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      showToast("评价失败：" + err.message);
+      return;
+    }
+  } else {
+    request.customerRating = rating;
+    const mm = getMatchmaker(request.matchmakerId);
+    if (mm) {
+      mm.ratingCount = Number(mm.ratingCount || 0) + 1;
+      mm.ratingTotal = Number(mm.ratingTotal || 0) + rating;
+      mm.serviceScore = Number((mm.ratingTotal / mm.ratingCount).toFixed(2));
+    }
+    saveState();
+  }
+  renderAll();
+  showToast("感谢评价，评分将影响红娘后续曝光");
 }
 
 async function reviewMatchmakerProfile(userId, action) {
@@ -4134,6 +4227,11 @@ function bindEvents() {
       confirmStableProgress(confirmStableButton.dataset.confirmStable);
       return;
     }
+    const rateButton = event.target.closest("[data-rate-request]");
+    if (rateButton) {
+      rateMatchmaker(rateButton.dataset.rateRequest);
+      return;
+    }
 
     const openThreadButton = event.target.closest("[data-open-thread]");
     if (openThreadButton) {
@@ -4197,6 +4295,7 @@ function bindEvents() {
   });
 
   safeBind("#becomeVipBtn", "click", becomeVip);
+  safeBind("#servicePlanSelect", "change", () => renderMiniApp());
 
   // VIP 会员页面专属红娘筛选、选择与兑换码绑定
   const selectTrigger = $("#referralMatchmakerSelect");

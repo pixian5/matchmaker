@@ -25,6 +25,9 @@ export const getMatchRequestsApi = () => get("/client/match-requests");
 export const confirmMatchOutcomeApi = (id, outcome = "stable_progress") =>
   patch(`/client/match-requests/${id}/outcome`, { outcome });
 
+export const rateMatchmakerApi = (id, rating, comment = "") =>
+  patch(`/client/match-requests/${id}/rating`, { rating, comment });
+
 // 提交实名认证
 export const submitRealNameApi = (data) => post("/client/real-name", data);
 

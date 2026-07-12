@@ -29,12 +29,14 @@
             </button>
           </view>
           <text class="service-stage">服务进度：{{ item.serviceStage || '待首次推荐' }} · 已跟进 {{ item.followupCount || 0 }} 次</text>
-          <button
-            v-if="item.matchOutcome !== 'stable_progress'"
+            <button
+              v-if="item.matchOutcome !== 'stable_progress'"
             class="outcome-btn"
             @click.stop="confirmStable(item)"
           >确认双方稳定发展</button>
           <text v-else class="confirmed-text">✓ 你已确认双方稳定发展，红娘获得成功服务奖励</text>
+          <button v-if="!item.customerRating" class="outcome-btn" @click.stop="rateService(item)">评价红娘服务</button>
+          <text v-else class="confirmed-text">服务评分：{{ '★'.repeat(item.customerRating) }}{{ '☆'.repeat(5 - item.customerRating) }}</text>
         </view>
       </view>
       
@@ -48,7 +50,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { getMatchRequestsApi, confirmMatchOutcomeApi } from '@/api/client';
+import { getMatchRequestsApi, confirmMatchOutcomeApi, rateMatchmakerApi } from '@/api/client';
 import { getChatThreadsApi } from '@/api/chat';
 import { onShow } from '@dcloudio/uni-app';
 
@@ -138,6 +140,23 @@ const confirmStable = async (item) => {
     item.matchOutcome = 'stable_progress';
     item.serviceStage = '双方稳定发展（用户确认）';
     uni.showToast({ title: '已确认，感谢反馈', icon: 'success' });
+  } catch (error) {
+    // request interceptor handles toast
+  }
+};
+
+const rateService = async (item) => {
+  const rating = Number(await new Promise((resolve) => {
+    uni.showModal({ title: '评价红娘服务', editable: true, placeholderText: '请输入1-5分', success: (result) => resolve(result.confirm ? result.content : '') });
+  }));
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    uni.showToast({ title: '请输入1-5分', icon: 'none' });
+    return;
+  }
+  try {
+    await rateMatchmakerApi(item.id, rating);
+    item.customerRating = rating;
+    uni.showToast({ title: '评价成功', icon: 'success' });
   } catch (error) {
     // request interceptor handles toast
   }

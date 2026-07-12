@@ -18,7 +18,7 @@
         </view>
         <view class="privilege-item">
           <text class="icon">✓</text>
-          <text class="text">每周 5 次人工牵线 + 5 次跟进</text>
+          <text class="text">按套餐获得保底推荐、牵线协调和聊天指导</text>
         </view>
         <view class="privilege-item">
           <text class="icon">✓</text>
@@ -30,6 +30,9 @@
     <view class="redeem-section">
       <text class="section-title">购买/兑换服务包</text>
       <text class="service-copy">¥399 / 30 天；首次推荐有明确时限，不合适可申请重新匹配。</text>
+      <picker mode="selector" :range="planLabels" :value="selectedPlanIndex" @change="handlePlanChange">
+        <view class="plan-picker">{{ planLabels[selectedPlanIndex] }}</view>
+      </picker>
       <view class="input-group">
         <input class="code-input" v-model="promoCode" placeholder="请输入兑换码" />
         <button class="btn-redeem" @click="handleRedeem" :class="{ disabled: loading || !promoCode }">
@@ -48,6 +51,14 @@ import { useUserStore } from '@/store/user';
 const userStore = useUserStore();
 const promoCode = ref('');
 const loading = ref(false);
+const plans = [
+  { id: 'trial_3d', label: '3天体验卡 ¥29.9' },
+  { id: 'weekly', label: '周卡 ¥99' },
+  { id: 'monthly', label: '月卡 ¥399' },
+  { id: 'quarterly', label: '季卡 ¥999' },
+];
+const selectedPlanIndex = ref(2);
+const planLabels = plans.map((item) => item.label);
 const matchRemaining = computed(() => Math.max(0, Number(userStore.servicePlan?.weeklyMatchLimit || 5) - Number(userStore.servicePlan?.weeklyMatchUsed || 0)));
 const followupRemaining = computed(() => Math.max(0, Number(userStore.servicePlan?.weeklyFollowupLimit || 5) - Number(userStore.servicePlan?.weeklyFollowupUsed || 0)));
 
@@ -61,7 +72,7 @@ const handleRedeem = async () => {
   if (!promoCode.value) return;
   loading.value = true;
   try {
-    await redeemVipApi({ code: promoCode.value });
+    await redeemVipApi({ code: promoCode.value, planId: plans[selectedPlanIndex.value].id });
     uni.showToast({ title: '兑换成功', icon: 'success' });
     promoCode.value = '';
     userStore.fetchProfile();
@@ -70,6 +81,10 @@ const handleRedeem = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const handlePlanChange = (event) => {
+  selectedPlanIndex.value = Number(event.detail.value || 0);
 };
 </script>
 
@@ -151,6 +166,17 @@ const handleRedeem = async () => {
     margin-bottom: $spacing-md;
     color: $color-muted;
     font-size: $font-sm;
+  }
+
+  .plan-picker {
+    height: 80rpx;
+    line-height: 80rpx;
+    margin-bottom: $spacing-md;
+    padding: 0 $spacing-md;
+    border: 2rpx solid $color-line;
+    border-radius: $radius-md;
+    color: $color-ink;
+    background: $color-paper;
   }
   
   .section-title {
