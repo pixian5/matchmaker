@@ -1,7 +1,7 @@
 services:
   web-ssl:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-ssl
+    container_name: matchmaker-web-ssl
     restart: unless-stopped
     depends_on:
       api:
@@ -20,7 +20,7 @@ services:
 
   web-mini-ssl:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-mini-ssl
+    container_name: matchmaker-web-mini-ssl
     restart: unless-stopped
     depends_on:
       api:
@@ -37,7 +37,7 @@ services:
 
   web-matchmaker-ssl:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-matchmaker-ssl
+    container_name: matchmaker-web-matchmaker-ssl
     restart: unless-stopped
     depends_on:
       api:
@@ -56,7 +56,7 @@ services:
 
   web-admin-ssl:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-admin-ssl
+    container_name: matchmaker-web-admin-ssl
     restart: unless-stopped
     depends_on:
       api:

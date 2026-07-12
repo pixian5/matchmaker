@@ -1,4 +1,4 @@
-const SESSION_KEY = "mediapeople_session";
+const SESSION_KEY = "matchmaker_session";
 const listeners = new Set();
 
 let socket = null;

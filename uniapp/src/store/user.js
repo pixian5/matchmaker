@@ -5,7 +5,7 @@
 import { defineStore } from "pinia";
 import { getMeApi } from "../api/client";
 
-const SESSION_KEY = "mediapeople_session";
+const SESSION_KEY = "matchmaker_session";
 
 export const useUserStore = defineStore("user", {
   state: () => ({

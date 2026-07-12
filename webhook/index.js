@@ -5,8 +5,8 @@ import fs from "fs";
 
 const PORT = Number(process.env.WEBHOOK_PORT || 9000);
 const SECRET = process.env.WEBHOOK_SECRET || "";
-const DEPLOY_SCRIPT = process.env.DEPLOY_SCRIPT || "/opt/mediapeople/deploy/auto-deploy.sh";
-const LOG_FILE = "/var/log/mediapeople-webhook.log";
+const DEPLOY_SCRIPT = process.env.DEPLOY_SCRIPT || "/opt/matchmaker/deploy/auto-deploy.sh";
+const LOG_FILE = "/var/log/matchmaker-webhook.log";
 const BARK_KEY = process.env.BARK_KEY || "RSyM7zPTvBfhNwf4RmMxic";
 
 function log(msg) {
@@ -16,7 +16,7 @@ function log(msg) {
 }
 
 function barkNotify(title, body) {
-  const data = JSON.stringify({ title, body, group: "mediapeople-deploy" });
+  const data = JSON.stringify({ title, body, group: "matchmaker-deploy" });
   const req = http.request(`https://api.day.app/${BARK_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
@@ -86,7 +86,7 @@ const server = http.createServer((req, res) => {
 
     // 额外检查跨进程锁，防止手动 SSH 触发的部署与 webhook 触发的并发
     try {
-      execSync('flock -n /var/run/mediapeople-deploy.lock true', { stdio: 'ignore' });
+      execSync('flock -n /var/run/matchmaker-deploy.lock true', { stdio: 'ignore' });
     } catch {
       log("跨进程锁被占用（手动部署进行中），跳过本次");
       res.writeHead(202);
@@ -108,7 +108,7 @@ const server = http.createServer((req, res) => {
       if (error) {
         if (error.killed) {
           log("部署超时 (300s)");
-          barkNotify("mediapeople 部署超时", "部署脚本执行超过 300s 被强制终止");
+          barkNotify("matchmaker 部署超时", "部署脚本执行超过 300s 被强制终止");
         } else {
           log(`部署失败: ${error.message}`);
           // 失败通知由 auto-deploy.sh 的 trap 负责，避免重复
@@ -121,10 +121,10 @@ const server = http.createServer((req, res) => {
       if (stderr) log(`stderr: ${stderr.trim()}`);
 
       // 检查是否需要重启 webhook（webhook/ 代码变更时由 auto-deploy.sh 标记）
-      if (fs.existsSync("/tmp/mediapeople-webhook-needs-restart")) {
-        try { fs.unlinkSync("/tmp/mediapeople-webhook-needs-restart"); } catch {}
+      if (fs.existsSync("/tmp/matchmaker-webhook-needs-restart")) {
+        try { fs.unlinkSync("/tmp/matchmaker-webhook-needs-restart"); } catch {}
         log("检测到 webhook 重启标记，15秒后延迟重启...");
-        exec("systemd-run --unit=mediapeople-webhook-restart bash -c 'sleep 15 && systemctl restart mediapeople-webhook'", () => {});
+        exec("systemd-run --unit=matchmaker-webhook-restart bash -c 'sleep 15 && systemctl restart matchmaker-webhook'", () => {});
       }
     });
   });

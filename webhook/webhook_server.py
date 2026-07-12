@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-mediapeople webhook server
+matchmaker webhook server
 接收 GitHub push 事件，触发服务器自动部署
 
 用法:
@@ -24,8 +24,8 @@ from datetime import datetime
 
 PORT = int(os.environ.get("WEBHOOK_PORT", 9000))
 SECRET = os.environ.get("WEBHOOK_SECRET", "").encode()
-DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/opt/mediapeople/deploy/auto-deploy.sh")
-LOG_FILE = "/var/log/mediapeople-webhook.log"
+DEPLOY_SCRIPT = os.environ.get("DEPLOY_SCRIPT", "/opt/matchmaker/deploy/auto-deploy.sh")
+LOG_FILE = "/var/log/matchmaker-webhook.log"
 BARK_KEY = os.environ.get("BARK_KEY", "RSyM7zPTvBfhNwf4RmMxic")
 
 # 配置日志同时输出到文件和标准输出
@@ -49,7 +49,7 @@ def bark_notify(title: str, body: str):
         data = json.dumps({
             "title": title,
             "body": body,
-            "group": "mediapeople-deploy",
+            "group": "matchmaker-deploy",
         }).encode()
         req = urllib.request.Request(
             f"https://api.day.app/{BARK_KEY}",
@@ -106,26 +106,26 @@ def run_deploy():
             # 失败通知由 auto-deploy.sh 的 trap 负责，避免重复
 
         # 检查是否需要重启 webhook（webhook/ 代码变更时由 auto-deploy.sh 标记）
-        if os.path.exists("/tmp/mediapeople-webhook-needs-restart"):
+        if os.path.exists("/tmp/matchmaker-webhook-needs-restart"):
             try:
-                os.unlink("/tmp/mediapeople-webhook-needs-restart")
+                os.unlink("/tmp/matchmaker-webhook-needs-restart")
             except Exception:
                 pass
             logger.info("检测到 webhook 重启标记，15秒后延迟重启...")
             # 用 systemd-run 创建独立 transient service 执行延迟重启
             # 这样重启 webhook 时不会杀掉这个延迟重启进程
             subprocess.Popen(
-                ["systemd-run", "--unit=mediapeople-webhook-restart",
-                 "bash", "-c", "sleep 15 && systemctl restart mediapeople-webhook"],
+                ["systemd-run", "--unit=matchmaker-webhook-restart",
+                 "bash", "-c", "sleep 15 && systemctl restart matchmaker-webhook"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
     except subprocess.TimeoutExpired:
         logger.error("部署超时 (300s)")
-        bark_notify("mediapeople 部署超时", "部署脚本执行超过 300s 被强制终止")
+        bark_notify("matchmaker 部署超时", "部署脚本执行超过 300s 被强制终止")
     except Exception as e:
         logger.error(f"部署异常: {e}")
-        bark_notify("mediapeople 部署异常", f"webhook 执行部署脚本时出错: {e}")
+        bark_notify("matchmaker 部署异常", f"webhook 执行部署脚本时出错: {e}")
     finally:
         deploying.release()
 
@@ -181,7 +181,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
 
         # 额外检查跨进程锁，防止手动 SSH 触发的部署与 webhook 触发的并发
         import fcntl
-        lock_fd = os.open("/var/run/mediapeople-deploy.lock", os.O_CREAT | os.O_RDWR, 0o644)
+        lock_fd = os.open("/var/run/matchmaker-deploy.lock", os.O_CREAT | os.O_RDWR, 0o644)
         try:
             fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (IOError, OSError):

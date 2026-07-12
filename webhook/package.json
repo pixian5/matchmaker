@@ -1,5 +1,5 @@
 {
-  "name": "mediapeople-webhook",
+  "name": "matchmaker-webhook",
   "version": "1.0.0",
   "description": "GitHub Webhook receiver for auto-deploy",
   "type": "module",

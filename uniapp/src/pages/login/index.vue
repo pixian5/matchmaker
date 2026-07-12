@@ -2,7 +2,7 @@
   <view class="login-container">
     <view class="brand-section">
       <view class="brand-mark">缘</view>
-      <text class="brand-title">缘定</text>
+      <text class="brand-title">MatchMaker</text>
       <text class="brand-subtitle">真实安全的单身交友平台</text>
     </view>
     <view class="form-section">

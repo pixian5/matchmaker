@@ -11,5 +11,5 @@ export const registerApi = (data) => post("/auth/client/register", data, { noAut
 
 // 登出（本地清除即可）
 export const logoutApi = () => {
-  uni.removeStorageSync("mediapeople_session");
+  uni.removeStorageSync("matchmaker_session");
 };

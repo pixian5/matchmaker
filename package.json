@@ -1,7 +1,7 @@
 {
-  "name": "mediapeople",
+  "name": "matchmaker",
   "version": "1.0.0",
-  "description": "缘定 - 单身交友平台，包含客户小程序端、红娘工作台、管理后台、Node/Express API、PostgreSQL 数据库和 Docker/Nginx 部署配置。",
+  "description": "MatchMaker - 单身交友平台，包含客户小程序端、红娘工作台、管理后台、Node/Express API、PostgreSQL 数据库和 Docker/Nginx 部署配置。",
   "main": "app.js",
   "scripts": {
     "render:static": "node ./scripts/render-static.mjs",
@@ -9,16 +9,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pixian5/mediapeople.git"
+    "url": "git+https://github.com/pixian5/matchmaker.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/pixian5/mediapeople/issues"
+    "url": "https://github.com/pixian5/matchmaker/issues"
   },
-  "homepage": "https://github.com/pixian5/mediapeople#readme",
+  "homepage": "https://github.com/pixian5/matchmaker#readme",
   "dependencies": {
     "puppeteer-core": "^25.2.1"
   }

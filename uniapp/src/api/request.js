@@ -3,7 +3,7 @@
  * 自动挂载 Token、统一错误处理、基础地址切换
  */
 
-const SESSION_KEY = "mediapeople_session";
+const SESSION_KEY = "matchmaker_session";
 
 // 根据平台自动切换 API 基础地址
 function getBaseUrl() {

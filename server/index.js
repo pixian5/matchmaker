@@ -6,7 +6,7 @@ import { WebSocketServer } from "ws";
 
 const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
-const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_TOKEN || "mediapeople-dev-secret-change-me";
+const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_TOKEN || "matchmaker-dev-secret-change-me";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
 
 // 敏感词列表（反欺诈：杀猪盘、引流、博彩、违规交易等）
@@ -245,8 +245,8 @@ const pool = new Pool(
     : {
         host: process.env.PGHOST || "localhost",
         port: Number(process.env.PGPORT || 5432),
-        database: process.env.PGDATABASE || "mediapeople",
-        user: process.env.PGUSER || "mediapeople",
+        database: process.env.PGDATABASE || "matchmaker",
+        user: process.env.PGUSER || "matchmaker",
         password: process.env.PGPASSWORD,
       },
 );
@@ -2687,5 +2687,5 @@ server.on("upgrade", (request, socket, head) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`mediapeople api listening on ${PORT}`);
+  console.log(`matchmaker api listening on ${PORT}`);
 });

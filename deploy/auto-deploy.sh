@@ -1,13 +1,13 @@
 #!/bin/bash
 # auto-deploy.sh - 由 GitHub Webhook 或手动触发，自动拉取代码并重启服务
-# 用法: bash /opt/mediapeople/deploy/auto-deploy.sh
+# 用法: bash /opt/matchmaker/deploy/auto-deploy.sh
 
 set -eo pipefail
 
-REPO_DIR="/opt/mediapeople"
-LOG_FILE="/var/log/mediapeople-deploy.log"
+REPO_DIR="/opt/matchmaker"
+LOG_FILE="/var/log/matchmaker-deploy.log"
 BARK_KEY="RSyM7zPTvBfhNwf4RmMxic"
-LOCK_FILE="/var/run/mediapeople-deploy.lock"
+LOCK_FILE="/var/run/matchmaker-deploy.lock"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -21,7 +21,7 @@ bark_notify() {
   esc_body=$(printf '%s' "$body" | sed 's/\\/\\\\/g; s/"/\\"/g')
   curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.day.app/${BARK_KEY}" \
     -H "Content-Type: application/json" \
-    -d "{\"title\":\"$esc_title\",\"body\":\"$esc_body\",\"group\":\"mediapeople-deploy\"}" \
+    -d "{\"title\":\"$esc_title\",\"body\":\"$esc_body\",\"group\":\"matchmaker-deploy\"}" \
     --max-time 10 || true
 }
 
@@ -37,13 +37,13 @@ bark_on_exit() {
   log "bark_on_exit 触发: exit_code=${exit_code} elapsed=${elapsed}s commit=${commit_hash}"
   if [ $exit_code -eq 0 ]; then
     local http_code
-    http_code=$(bark_notify "mediapeople 部署成功" "耗时 ${elapsed}s | ${commit_hash} ${commit_msg}")
+    http_code=$(bark_notify "matchmaker 部署成功" "耗时 ${elapsed}s | ${commit_hash} ${commit_msg}")
     log "bark_notify 返回: http_code=${http_code}"
   else
     local err_tail
     err_tail=$(tail -5 "$LOG_FILE" 2>/dev/null | tr '\n' ' ' | head -c 200)
     local http_code
-    http_code=$(bark_notify "mediapeople 部署失败" "exit=${exit_code} 耗时 ${elapsed}s | ${commit_hash} ${commit_msg} | ${err_tail}")
+    http_code=$(bark_notify "matchmaker 部署失败" "exit=${exit_code} 耗时 ${elapsed}s | ${commit_hash} ${commit_msg} | ${err_tail}")
     log "bark_notify 返回: http_code=${http_code}"
   fi
 }
@@ -157,11 +157,11 @@ WEBHOOK_NEEDS_RESTART=false
 if echo "$CHANGED_FILES" | grep -q '^webhook/'; then
   log "检测到 webhook/ 变更，将在部署完成后触发重启..."
   WEBHOOK_NEEDS_RESTART=true
-  touch /tmp/mediapeople-webhook-needs-restart
+  touch /tmp/matchmaker-webhook-needs-restart
 fi
 
 # 重建 SSL version API / Nginx 容器（若有必要）。compose 配置变更必须 recreate，restart 不会应用 extra_hosts/ports 等容器配置。
-if docker ps --format '{{.Names}}' | grep -q 'mediapeople-web-ssl'; then
+if docker ps --format '{{.Names}}' | grep -q 'matchmaker-web-ssl'; then
   if echo "$CHANGED_FILES" | grep -Eq '^(server/|compose\.ssl\.yml|deploy/nginx-ssl\.conf)'; then
     SSL_RECREATE_ARGS=""
     if echo "$CHANGED_FILES" | grep -Eq '^(compose\.ssl\.yml|deploy/nginx-ssl\.conf)'; then

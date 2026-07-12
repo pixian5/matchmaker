@@ -1,17 +1,17 @@
 [Unit]
-Description=Mediapeople GitHub Webhook Server
+Description=MatchMaker GitHub Webhook Server
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/mediapeople/webhook
-ExecStart=/usr/bin/python3 /opt/mediapeople/webhook/webhook_server.py
+WorkingDirectory=/opt/matchmaker/webhook
+ExecStart=/usr/bin/python3 /opt/matchmaker/webhook/webhook_server.py
 Restart=always
 RestartSec=5
 Environment=WEBHOOK_PORT=9000
-Environment=WEBHOOK_SECRET=mediapeople-webhook-2026
-Environment=DEPLOY_SCRIPT=/opt/mediapeople/deploy/auto-deploy.sh
+Environment=WEBHOOK_SECRET=matchmaker-webhook-2026
+Environment=DEPLOY_SCRIPT=/opt/matchmaker/deploy/auto-deploy.sh
 Environment=BARK_KEY=RSyM7zPTvBfhNwf4RmMxic
 Environment=PATH=/root/.nvm/versions/node/v24.15.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 StandardOutput=journal

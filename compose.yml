@@ -1,7 +1,7 @@
 services:
   web:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web
+    container_name: matchmaker-web
     restart: unless-stopped
     depends_on:
       api:
@@ -16,7 +16,7 @@ services:
 
   web-mini:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-mini
+    container_name: matchmaker-web-mini
     restart: unless-stopped
     depends_on:
       api:
@@ -29,7 +29,7 @@ services:
 
   web-matchmaker:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-matchmaker
+    container_name: matchmaker-web-matchmaker
     restart: unless-stopped
     depends_on:
       api:
@@ -44,7 +44,7 @@ services:
 
   web-admin:
     image: nginx:1.27-alpine
-    container_name: mediapeople-web-admin
+    container_name: matchmaker-web-admin
     restart: unless-stopped
     depends_on:
       api:
@@ -60,16 +60,16 @@ services:
   api:
     build:
       context: ./server
-    container_name: mediapeople-api
+    container_name: matchmaker-api
     restart: unless-stopped
     environment:
       PGHOST: postgres
       PGPORT: 5432
-      PGDATABASE: ${POSTGRES_DB:-mediapeople}
-      PGUSER: ${POSTGRES_USER:-mediapeople}
+      PGDATABASE: ${POSTGRES_DB:-matchmaker}
+      PGUSER: ${POSTGRES_USER:-matchmaker}
       PGPASSWORD: ${POSTGRES_PASSWORD}
       PORT: 3000
-      JWT_SECRET: ${JWT_SECRET:-mediapeople-dev-secret-change-me}
+      JWT_SECRET: ${JWT_SECRET:-matchmaker-dev-secret-change-me}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
     depends_on:
       postgres:
@@ -79,11 +79,11 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: mediapeople-postgres
+    container_name: matchmaker-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-mediapeople}
-      POSTGRES_USER: ${POSTGRES_USER:-mediapeople}
+      POSTGRES_DB: ${POSTGRES_DB:-matchmaker}
+      POSTGRES_USER: ${POSTGRES_USER:-matchmaker}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
       - "127.0.0.1:5432:5432"

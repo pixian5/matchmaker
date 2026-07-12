@@ -1,4 +1,4 @@
-# 缘定：客户小程序 + 红娘工作台 + 管理后台
+# MatchMaker：客户小程序 + 红娘工作台 + 管理后台
 
 这是一个婚恋牵线业务原型，包含客户小程序端、红娘工作台、管理后台、Node/Express API、PostgreSQL 数据库和 Docker/Nginx 部署配置。
 
@@ -34,7 +34,7 @@ HTTP 入口主要用于服务器本机或临时排查：
 - 前端静态页：`index.html`、`mini.html`、`matchmaker.html`、`admin.html`，由 `scripts/render-static.mjs` 生成带 Git 版本号的 `dist/*.html`。
 - uniapp：`uniapp/` 目录包含 Vue3 + Vite + uniapp 版本，可构建 H5 和微信小程序。
 - 后端：`server/index.js`，Express + PostgreSQL。
-- 数据库：PostgreSQL 16 Docker 容器，服务器数据目录 `/opt/mediapeople/data/postgres`。
+- 数据库：PostgreSQL 16 Docker 容器，服务器数据目录 `/opt/matchmaker/data/postgres`。
 
 ## 常用账号
 
@@ -93,7 +93,7 @@ uniapp/src/                     uniapp 源码
 进入项目：
 
 ```bash
-cd /Users/x/code/mediapeople
+cd /Users/x/code/matchmaker
 ```
 
 修改代码后做本地检查，不启动本地网站作为最终验证：
@@ -109,7 +109,7 @@ git diff --check
 如果改了 uniapp：
 
 ```bash
-cd /Users/x/code/mediapeople/uniapp
+cd /Users/x/code/matchmaker/uniapp
 npm run build:h5
 npm run build:mp-weixin
 ```
@@ -117,7 +117,7 @@ npm run build:mp-weixin
 线上全业务回归审计：
 
 ```bash
-cd /Users/x/code/mediapeople
+cd /Users/x/code/matchmaker
 node scripts/full-business-audit.mjs
 ```
 
@@ -126,7 +126,7 @@ node scripts/full-business-audit.mjs
 如果只需要生成静态 HTML 版本号：
 
 ```bash
-cd /Users/x/code/mediapeople
+cd /Users/x/code/matchmaker
 npm run render:static
 ```
 
@@ -146,7 +146,7 @@ git push origin master
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'cd /opt/mediapeople && bash deploy/auto-deploy.sh'
+  'cd /opt/matchmaker && bash deploy/auto-deploy.sh'
 ```
 
 `deploy/auto-deploy.sh` 当前流程：
@@ -165,7 +165,7 @@ uniapp H5 构建成功后，服务器会在 `uniapp/dist/build/h5/.build-commit`
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'cd /opt/mediapeople && git rev-parse --short HEAD && grep -R "app.js?v=" -n dist | head'
+  'cd /opt/matchmaker && git rev-parse --short HEAD && grep -R "app.js?v=" -n dist | head'
 ```
 
 正常情况下，`app.js?v=` 后面应是当前 Git 短提交号。
@@ -188,7 +188,7 @@ HTML 模板中使用：
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'cd /opt/mediapeople && bash deploy/auto-deploy.sh && grep -R "app.js?v=" -n dist | head'
+  'cd /opt/matchmaker && bash deploy/auto-deploy.sh && grep -R "app.js?v=" -n dist | head'
 ```
 
 如果刚更新过 `auto-deploy.sh` 自身，第一次执行可能仍按旧脚本跑，第二次执行才会使用新脚本内容。
@@ -257,28 +257,28 @@ ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'cd /opt/mediapeople && docker compose -f compose.yml -f compose.ssl.yml ps'
+  'cd /opt/matchmaker && docker compose -f compose.yml -f compose.ssl.yml ps'
 ```
 
 查看 API 日志：
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'docker logs --tail=100 mediapeople-api'
+  'docker logs --tail=100 matchmaker-api'
 ```
 
 重建 API：
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'cd /opt/mediapeople && docker compose -f compose.yml -f compose.ssl.yml up -d --build api'
+  'cd /opt/matchmaker && docker compose -f compose.yml -f compose.ssl.yml up -d --build api'
 ```
 
 重启前端容器：
 
 ```bash
 ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
-  'cd /opt/mediapeople && docker compose -f compose.yml -f compose.ssl.yml restart web web-mini web-matchmaker web-admin web-ssl web-mini-ssl web-matchmaker-ssl web-admin-ssl'
+  'cd /opt/matchmaker && docker compose -f compose.yml -f compose.ssl.yml restart web web-mini web-matchmaker web-admin web-ssl web-mini-ssl web-matchmaker-ssl web-admin-ssl'
 ```
 
 如果 Nginx 仍 502，常见原因是 API 容器重建后 Nginx 解析到旧容器 IP，重启前端 Nginx 容器即可刷新。

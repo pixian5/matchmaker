@@ -1,4 +1,4 @@
-const STORAGE_KEY = "mediapeople-dating-demo-v1";
+const STORAGE_KEY = "matchmaker-dating-demo-v1";
 const SESSION_KEY = `${STORAGE_KEY}:session`;
 const VIP_PRICE = 399;
 const API_BASE = "/api";
@@ -1311,7 +1311,7 @@ function showPushNotification(title, fields, type = "info") {
     <div class="wechat-header">
       <div class="wechat-brand">
         <div class="wechat-icon">微</div>
-        <span>缘定公众号</span>
+        <span>MatchMaker公众号</span>
       </div>
       <span class="wechat-time">${timeStr}</span>
     </div>
@@ -2705,7 +2705,7 @@ async function contactRequestSide(requestId, side) {
       "牵线红娘": matchmaker?.name || "专属红娘",
       "心仪嘉宾": to.name,
       "微信号码": to.wechat,
-      "温馨提示": "红娘已确认双方信息，请复制微信号添加好友并备注“缘定”。"
+      "温馨提示": "红娘已确认双方信息，请复制微信号添加好友并备注“MatchMaker”。"
     });
   }
 }

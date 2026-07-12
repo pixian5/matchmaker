@@ -3,8 +3,8 @@ set -eu
 
 BRANCH="${1:-master}"
 REMOTE_HOST="${REMOTE_HOST:-root@uk.sbbz.tech}"
-REMOTE_DEPLOY_SCRIPT="${REMOTE_DEPLOY_SCRIPT:-/opt/mediapeople/deploy/auto-deploy.sh}"
-SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/mediapeople_uk_ed25519}"
+REMOTE_DEPLOY_SCRIPT="${REMOTE_DEPLOY_SCRIPT:-/opt/matchmaker/deploy/auto-deploy.sh}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/matchmaker_uk_ed25519}"
 
 ssh_args="-o StrictHostKeyChecking=accept-new"
 if [ -f "$SSH_KEY_PATH" ]; then

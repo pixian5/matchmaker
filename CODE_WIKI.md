@@ -1,4 +1,4 @@
-# 缘定 - Code Wiki 文档
+# MatchMaker - Code Wiki 文档
 
 > 项目版本：v1.0.0 | 前端资源版本：v1.0.32 | 更新日期：2026-06-25
 
@@ -25,7 +25,7 @@
 
 ### 1.1 项目简介
 
-"缘定"是一个面向单身人士的交友平台原型。项目涵盖完整的业务闭环：客户注册、资料展示、VIP 会员开通、红娘牵线、实时聊天、管理后台运营，以及佣金分成结算。
+"MatchMaker"是一个面向单身人士的交友平台原型。项目涵盖完整的业务闭环：客户注册、资料展示、VIP 会员开通、红娘牵线、实时聊天、管理后台运营，以及佣金分成结算。
 
 项目采用 **前后端分离 + Docker 容器化部署** 的架构，前端为纯静态 HTML/CSS/JS，后端为 Node.js Express API，数据库为 PostgreSQL。
 
@@ -45,17 +45,17 @@
 
 | 角色 | 入口文件 | HTTP 端口 | HTTPS 端口 | 核心功能 |
 |------|----------|-----------|------------|----------|
-| **客户（小程序端）** | [mini.html](file:///Users/x/code/mediapeople/mini.html) | 8096 | 9446 | 注册登录、资料维护、筛选异性、VIP 兑换、申请牵线、实时聊天 |
-| **红娘（工作台）** | [matchmaker.html](file:///Users/x/code/mediapeople/matchmaker.html) | 8097 | 9447 | 注册登录、查看牵线通知、联系双方、查看微信、一对一聊天 |
-| **管理员（后台）** | [admin.html](file:///Users/x/code/mediapeople/admin.html) | 8098 | 9448 | 客户/红娘/机构管理、分成设置、兑换码管理、数据图表 |
-| **综合预览端** | [index.html](file:///Users/x/code/mediapeople/index.html) | 8095 | 9445 | 同一页面切换三端视角，用于演示 |
+| **客户（小程序端）** | [mini.html](file:///Users/x/code/matchmaker/mini.html) | 8096 | 9446 | 注册登录、资料维护、筛选异性、VIP 兑换、申请牵线、实时聊天 |
+| **红娘（工作台）** | [matchmaker.html](file:///Users/x/code/matchmaker/matchmaker.html) | 8097 | 9447 | 注册登录、查看牵线通知、联系双方、查看微信、一对一聊天 |
+| **管理员（后台）** | [admin.html](file:///Users/x/code/matchmaker/admin.html) | 8098 | 9448 | 客户/红娘/机构管理、分成设置、兑换码管理、数据图表 |
+| **综合预览端** | [index.html](file:///Users/x/code/matchmaker/index.html) | 8095 | 9445 | 同一页面切换三端视角，用于演示 |
 
 ### 1.4 仓库信息
 
-- **GitHub**: `https://github.com/pixian5/mediapeople`
-- **服务器部署目录**: `/opt/mediapeople`
-- **数据库容器**: `mediapeople-postgres`
-- **API 容器**: `mediapeople-api`
+- **GitHub**: `https://github.com/pixian5/matchmaker`
+- **服务器部署目录**: `/opt/matchmaker`
+- **数据库容器**: `matchmaker-postgres`
+- **API 容器**: `matchmaker-api`
 - **域名**: `uk.sbbz.tech`
 
 ---
@@ -98,7 +98,7 @@
 |------|------|
 | HTML5 | 四个入口页面，纯静态 |
 | CSS3 | 自定义变量、Grid/Flex 布局、毛玻璃特效、响应式 |
-| 原生 JavaScript | 无框架依赖，单文件 [app.js](file:///Users/x/code/mediapeople/app.js) 约 3900 行 |
+| 原生 JavaScript | 无框架依赖，单文件 [app.js](file:///Users/x/code/matchmaker/app.js) 约 3900 行 |
 | localStorage | 离线状态缓存与会话存储 |
 
 #### 后端技术栈
@@ -132,7 +132,7 @@
 ### 3.1 根目录结构
 
 ```
-mediapeople/
+matchmaker/
 ├── index.html              综合预览端（8095/9445）
 ├── mini.html               客户小程序端（8096/9446）
 ├── matchmaker.html         红娘工作台端（8097/9447）
@@ -169,11 +169,11 @@ mediapeople/
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| [app.js](file:///Users/x/code/mediapeople/app.js) | ~3900 | 前端业务逻辑（所有角色共享） |
-| [server/index.js](file:///Users/x/code/mediapeople/server/index.js) | ~1680 | 后端 Express API |
-| [styles.css](file:///Users/x/code/mediapeople/styles.css) | ~1680 | 全局样式表 |
-| [compose.yml](file:///Users/x/code/mediapeople/compose.yml) | ~99 | HTTP 容器编排 |
-| [compose.ssl.yml](file:///Users/x/code/mediapeople/compose.ssl.yml) | ~68 | HTTPS 容器编排 |
+| [app.js](file:///Users/x/code/matchmaker/app.js) | ~3900 | 前端业务逻辑（所有角色共享） |
+| [server/index.js](file:///Users/x/code/matchmaker/server/index.js) | ~1680 | 后端 Express API |
+| [styles.css](file:///Users/x/code/matchmaker/styles.css) | ~1680 | 全局样式表 |
+| [compose.yml](file:///Users/x/code/matchmaker/compose.yml) | ~99 | HTTP 容器编排 |
+| [compose.ssl.yml](file:///Users/x/code/matchmaker/compose.ssl.yml) | ~68 | HTTPS 容器编排 |
 
 ---
 
@@ -181,7 +181,7 @@ mediapeople/
 
 ### 4.1 前端架构概述
 
-前端采用**单文件架构**，所有业务逻辑集中在 [app.js](file:///Users/x/code/mediapeople/app.js) 中。四个 HTML 入口页面共享同一份 JS 和 CSS。
+前端采用**单文件架构**，所有业务逻辑集中在 [app.js](file:///Users/x/code/matchmaker/app.js) 中。四个 HTML 入口页面共享同一份 JS 和 CSS。
 
 ### 4.2 核心状态管理
 
@@ -222,70 +222,70 @@ session = {
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `initApp()` | [app.js#L509-L542](file:///Users/x/code/mediapeople/app.js#L509-L542) | 应用初始化：加载远程状态、启动轮询、渲染页面 |
-| `loadState()` | [app.js#L368-L379](file:///Users/x/code/mediapeople/app.js#L368-L379) | 从 localStorage 加载本地状态 |
-| `saveState()` | [app.js#L381-L387](file:///Users/x/code/mediapeople/app.js#L381-L387) | 保存状态到 localStorage 并同步到远程 |
-| `loadRemoteState()` | [app.js#L455-L463](file:///Users/x/code/mediapeople/app.js#L455-L463) | 从 API 加载远程状态 |
-| `syncRemoteState()` | [app.js#L465-L483](file:///Users/x/code/mediapeople/app.js#L465-L483) | 同步本地状态到远程 API |
-| `ensureStateDefaults()` | [app.js#L208-L344](file:///Users/x/code/mediapeople/app.js#L208-L344) | 补全状态对象的默认字段 |
+| `initApp()` | [app.js#L509-L542](file:///Users/x/code/matchmaker/app.js#L509-L542) | 应用初始化：加载远程状态、启动轮询、渲染页面 |
+| `loadState()` | [app.js#L368-L379](file:///Users/x/code/matchmaker/app.js#L368-L379) | 从 localStorage 加载本地状态 |
+| `saveState()` | [app.js#L381-L387](file:///Users/x/code/matchmaker/app.js#L381-L387) | 保存状态到 localStorage 并同步到远程 |
+| `loadRemoteState()` | [app.js#L455-L463](file:///Users/x/code/matchmaker/app.js#L455-L463) | 从 API 加载远程状态 |
+| `syncRemoteState()` | [app.js#L465-L483](file:///Users/x/code/matchmaker/app.js#L465-L483) | 同步本地状态到远程 API |
+| `ensureStateDefaults()` | [app.js#L208-L344](file:///Users/x/code/matchmaker/app.js#L208-L344) | 补全状态对象的默认字段 |
 
 #### 路由系统
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `handleRouting()` | [app.js#L556-L702](file:///Users/x/code/mediapeople/app.js#L556-L702) | 路由分发主函数 |
-| `navigate()` | [app.js#L704-L711](file:///Users/x/code/mediapeople/app.js#L704-L711) | 编程式导航 |
-| `isMiniView()` | [app.js#L544-L546](file:///Users/x/code/mediapeople/app.js#L544-L546) | 检测是否为小程序端视图 |
-| `isMatchmakerView()` | [app.js#L548-L550](file:///Users/x/code/mediapeople/app.js#L548-L550) | 检测是否为红娘端视图 |
-| `isAdminView()` | [app.js#L552-L554](file:///Users/x/code/mediapeople/app.js#L552-L554) | 检测是否为管理后台视图 |
+| `handleRouting()` | [app.js#L556-L702](file:///Users/x/code/matchmaker/app.js#L556-L702) | 路由分发主函数 |
+| `navigate()` | [app.js#L704-L711](file:///Users/x/code/matchmaker/app.js#L704-L711) | 编程式导航 |
+| `isMiniView()` | [app.js#L544-L546](file:///Users/x/code/matchmaker/app.js#L544-L546) | 检测是否为小程序端视图 |
+| `isMatchmakerView()` | [app.js#L548-L550](file:///Users/x/code/matchmaker/app.js#L548-L550) | 检测是否为红娘端视图 |
+| `isAdminView()` | [app.js#L552-L554](file:///Users/x/code/matchmaker/app.js#L552-L554) | 检测是否为管理后台视图 |
 
 #### 认证与会话
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `loadSession()` | [app.js#L389-L405](file:///Users/x/code/mediapeople/app.js#L389-L405) | 从 localStorage 加载会话 |
-| `saveSession()` | [app.js#L407-L409](file:///Users/x/code/mediapeople/app.js#L407-L409) | 保存会话到 localStorage |
-| `setAuthSession()` | [app.js#L411-L422](file:///Users/x/code/mediapeople/app.js#L411-L422) | 设置认证会话（角色、ID、Token） |
-| `authHeaders()` | [app.js#L424-L426](file:///Users/x/code/mediapeople/app.js#L424-L426) | 获取认证请求头 |
-| `hashText()` | [app.js#L717-L731](file:///Users/x/code/mediapeople/app.js#L717-L731) | 文本哈希（SHA-256 或 FNV-1a） |
+| `loadSession()` | [app.js#L389-L405](file:///Users/x/code/matchmaker/app.js#L389-L405) | 从 localStorage 加载会话 |
+| `saveSession()` | [app.js#L407-L409](file:///Users/x/code/matchmaker/app.js#L407-L409) | 保存会话到 localStorage |
+| `setAuthSession()` | [app.js#L411-L422](file:///Users/x/code/matchmaker/app.js#L411-L422) | 设置认证会话（角色、ID、Token） |
+| `authHeaders()` | [app.js#L424-L426](file:///Users/x/code/matchmaker/app.js#L424-L426) | 获取认证请求头 |
+| `hashText()` | [app.js#L717-L731](file:///Users/x/code/matchmaker/app.js#L717-L731) | 文本哈希（SHA-256 或 FNV-1a） |
 
 #### 客户相关函数
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `currentUser()` | [app.js#L733-L735](file:///Users/x/code/mediapeople/app.js#L733-L735) | 获取当前登录用户 |
-| `renderMiniApp()` | [app.js#L1116-L1200](file:///Users/x/code/mediapeople/app.js#L1116-L1200) | 渲染小程序端整体 |
-| `renderProfiles()` | [app.js#L1302-L1399](file:///Users/x/code/mediapeople/app.js#L1302-L1399) | 渲染筛选资料卡片 |
-| `renderMineTabContent()` | [app.js#L1230-L1294](file:///Users/x/code/mediapeople/app.js#L1230-L1294) | 渲染"我的"页面 |
-| `addVipMatchmaker()` | [app.js#L759-L767](file:///Users/x/code/mediapeople/app.js#L759-L767) | 为用户添加 VIP 红娘 |
+| `currentUser()` | [app.js#L733-L735](file:///Users/x/code/matchmaker/app.js#L733-L735) | 获取当前登录用户 |
+| `renderMiniApp()` | [app.js#L1116-L1200](file:///Users/x/code/matchmaker/app.js#L1116-L1200) | 渲染小程序端整体 |
+| `renderProfiles()` | [app.js#L1302-L1399](file:///Users/x/code/matchmaker/app.js#L1302-L1399) | 渲染筛选资料卡片 |
+| `renderMineTabContent()` | [app.js#L1230-L1294](file:///Users/x/code/matchmaker/app.js#L1230-L1294) | 渲染"我的"页面 |
+| `addVipMatchmaker()` | [app.js#L759-L767](file:///Users/x/code/matchmaker/app.js#L759-L767) | 为用户添加 VIP 红娘 |
 
 #### 红娘相关函数
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `currentMatchmaker()` | [app.js#L737-L739](file:///Users/x/code/mediapeople/app.js#L737-L739) | 获取当前登录红娘 |
+| `currentMatchmaker()` | [app.js#L737-L739](file:///Users/x/code/matchmaker/app.js#L737-L739) | 获取当前登录红娘 |
 | `renderMatchmakerDesk()` | - | 渲染红娘工作台 |
-| `getRequestContactStatus()` | [app.js#L346-L351](file:///Users/x/code/mediapeople/app.js#L346-L351) | 计算牵线请求联系状态 |
+| `getRequestContactStatus()` | [app.js#L346-L351](file:///Users/x/code/matchmaker/app.js#L346-L351) | 计算牵线请求联系状态 |
 
 #### 聊天相关函数
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `getThreadById()` | [app.js#L784-L786](file:///Users/x/code/mediapeople/app.js#L784-L786) | 根据 ID 获取聊天线程 |
-| `getThreadMessages()` | [app.js#L814-L818](file:///Users/x/code/mediapeople/app.js#L814-L818) | 获取线程的所有消息 |
-| `createLocalThread()` | [app.js#L878-L932](file:///Users/x/code/mediapeople/app.js#L878-L932) | 创建本地聊天线程 |
-| `appendLocalMessage()` | [app.js#L934-L950](file:///Users/x/code/mediapeople/app.js#L934-L950) | 追加本地消息 |
-| `threadHasParticipant()` | [app.js#L820-L822](file:///Users/x/code/mediapeople/app.js#L820-L822) | 检查线程是否包含某参与者 |
+| `getThreadById()` | [app.js#L784-L786](file:///Users/x/code/matchmaker/app.js#L784-L786) | 根据 ID 获取聊天线程 |
+| `getThreadMessages()` | [app.js#L814-L818](file:///Users/x/code/matchmaker/app.js#L814-L818) | 获取线程的所有消息 |
+| `createLocalThread()` | [app.js#L878-L932](file:///Users/x/code/matchmaker/app.js#L878-L932) | 创建本地聊天线程 |
+| `appendLocalMessage()` | [app.js#L934-L950](file:///Users/x/code/matchmaker/app.js#L934-L950) | 追加本地消息 |
+| `threadHasParticipant()` | [app.js#L820-L822](file:///Users/x/code/matchmaker/app.js#L820-L822) | 检查线程是否包含某参与者 |
 
 #### 渲染与 UI
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `renderAll()` | [app.js#L952-L958](file:///Users/x/code/mediapeople/app.js#L952-L958) | 渲染所有视图 |
-| `showToast()` | [app.js#L960-L965](file:///Users/x/code/mediapeople/app.js#L960-L965) | 显示 Toast 提示 |
-| `logEvent()` | [app.js#L967-L995](file:///Users/x/code/mediapeople/app.js#L967-L995) | 记录控制台日志事件 |
-| `switchView()` | [app.js#L1047-L1063](file:///Users/x/code/mediapeople/app.js#L1047-L1063) | 切换视图（综合预览端用） |
-| `switchMiniTab()` | [app.js#L1065-L1073](file:///Users/x/code/mediapeople/app.js#L1065-L1073) | 切换小程序 Tab |
+| `renderAll()` | [app.js#L952-L958](file:///Users/x/code/matchmaker/app.js#L952-L958) | 渲染所有视图 |
+| `showToast()` | [app.js#L960-L965](file:///Users/x/code/matchmaker/app.js#L960-L965) | 显示 Toast 提示 |
+| `logEvent()` | [app.js#L967-L995](file:///Users/x/code/matchmaker/app.js#L967-L995) | 记录控制台日志事件 |
+| `switchView()` | [app.js#L1047-L1063](file:///Users/x/code/matchmaker/app.js#L1047-L1063) | 切换视图（综合预览端用） |
+| `switchMiniTab()` | [app.js#L1065-L1073](file:///Users/x/code/matchmaker/app.js#L1065-L1073) | 切换小程序 Tab |
 
 ### 4.4 数据同步机制
 
@@ -344,7 +344,7 @@ session = {
 
 ### 5.1 后端架构概述
 
-后端采用 **Express.js** 框架，单文件 [server/index.js](file:///Users/x/code/mediapeople/server/index.js) 实现，使用 ES Module 语法。
+后端采用 **Express.js** 框架，单文件 [server/index.js](file:///Users/x/code/matchmaker/server/index.js) 实现，使用 ES Module 语法。
 
 ### 5.2 核心模块结构
 
@@ -397,40 +397,40 @@ express.json({ limit: "2mb" })  ← 解析 JSON 请求体
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `initDatabase()` | [server/index.js#L215-L338](file:///Users/x/code/mediapeople/server/index.js#L215-L338) | 建表 + 种子数据初始化 |
-| `Pool` | [server/index.js#L200-L210](file:///Users/x/code/mediapeople/server/index.js#L200-L210) | PostgreSQL 连接池实例 |
+| `initDatabase()` | [server/index.js#L215-L338](file:///Users/x/code/matchmaker/server/index.js#L215-L338) | 建表 + 种子数据初始化 |
+| `Pool` | [server/index.js#L200-L210](file:///Users/x/code/matchmaker/server/index.js#L200-L210) | PostgreSQL 连接池实例 |
 
 #### Token 与认证
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `signToken()` | [server/index.js#L364-L372](file:///Users/x/code/mediapeople/server/index.js#L364-L372) | 签发 HMAC Token（7 天有效期） |
-| `verifyToken()` | [server/index.js#L374-L382](file:///Users/x/code/mediapeople/server/index.js#L374-L382) | 验证 Token 签名与过期时间 |
-| `getBearerToken()` | [server/index.js#L384-L386](file:///Users/x/code/mediapeople/server/index.js#L384-L386) | 从请求头提取 Bearer Token |
-| `requireAuth()` | [server/index.js#L388-L402](file:///Users/x/code/mediapeople/server/index.js#L388-L402) | 认证中间件工厂函数 |
-| `hashPassword()` | [server/index.js#L404-L408](file:///Users/x/code/mediapeople/server/index.js#L404-L408) | scrypt 密码哈希 |
-| `verifyPassword()` | [server/index.js#L410-L418](file:///Users/x/code/mediapeople/server/index.js#L410-L418) | 验证密码哈希 |
+| `signToken()` | [server/index.js#L364-L372](file:///Users/x/code/matchmaker/server/index.js#L364-L372) | 签发 HMAC Token（7 天有效期） |
+| `verifyToken()` | [server/index.js#L374-L382](file:///Users/x/code/matchmaker/server/index.js#L374-L382) | 验证 Token 签名与过期时间 |
+| `getBearerToken()` | [server/index.js#L384-L386](file:///Users/x/code/matchmaker/server/index.js#L384-L386) | 从请求头提取 Bearer Token |
+| `requireAuth()` | [server/index.js#L388-L402](file:///Users/x/code/matchmaker/server/index.js#L388-L402) | 认证中间件工厂函数 |
+| `hashPassword()` | [server/index.js#L404-L408](file:///Users/x/code/matchmaker/server/index.js#L404-L408) | scrypt 密码哈希 |
+| `verifyPassword()` | [server/index.js#L410-L418](file:///Users/x/code/matchmaker/server/index.js#L410-L418) | 验证密码哈希 |
 
 #### 数据读写
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `readState()` | [server/index.js#L569-L695](file:///Users/x/code/mediapeople/server/index.js#L569-L695) | 从各业务表读取组装完整 state |
-| `writeState()` | [server/index.js#L697-L699](file:///Users/x/code/mediapeople/server/index.js#L697-L699) | 调用 syncNormalizedState 全量写入 |
-| `syncNormalizedState()` | [server/index.js#L705-L999](file:///Users/x/code/mediapeople/server/index.js#L705-L999) | UPSERT + DELETE 全量同步到业务表 |
-| `publicState()` | [server/index.js#L420-L426](file:///Users/x/code/mediapeople/server/index.js#L420-L426) | 数据脱敏（移除 passwordHash、idCard） |
-| `validateState()` | [server/index.js#L340-L354](file:///Users/x/code/mediapeople/server/index.js#L340-L354) | 验证 state 数据结构 |
+| `readState()` | [server/index.js#L569-L695](file:///Users/x/code/matchmaker/server/index.js#L569-L695) | 从各业务表读取组装完整 state |
+| `writeState()` | [server/index.js#L697-L699](file:///Users/x/code/matchmaker/server/index.js#L697-L699) | 调用 syncNormalizedState 全量写入 |
+| `syncNormalizedState()` | [server/index.js#L705-L999](file:///Users/x/code/matchmaker/server/index.js#L705-L999) | UPSERT + DELETE 全量同步到业务表 |
+| `publicState()` | [server/index.js#L420-L426](file:///Users/x/code/matchmaker/server/index.js#L420-L426) | 数据脱敏（移除 passwordHash、idCard） |
+| `validateState()` | [server/index.js#L340-L354](file:///Users/x/code/matchmaker/server/index.js#L340-L354) | 验证 state 数据结构 |
 
 #### 业务辅助函数
 
 | 函数名 | 位置 | 说明 |
 |--------|------|------|
-| `ensureUserDefaults()` | [server/index.js#L440-L452](file:///Users/x/code/mediapeople/server/index.js#L440-L452) | 补全用户默认字段 |
-| `ensureRequestDefaults()` | [server/index.js#L428-L438](file:///Users/x/code/mediapeople/server/index.js#L428-L438) | 补全牵线请求默认字段 |
-| `getRequestContactStatus()` | [server/index.js#L478-L483](file:///Users/x/code/mediapeople/server/index.js#L478-L483) | 计算牵线请求联系状态 |
-| `buildMemberMatchmakerThreads()` | [server/index.js#L505-L542](file:///Users/x/code/mediapeople/server/index.js#L505-L542) | 创建红娘-会员聊天线程 |
-| `buildMemberMemberThread()` | [server/index.js#L544-L558](file:///Users/x/code/mediapeople/server/index.js#L544-L558) | 创建会员互聊天线程 |
-| `canAccessThread()` | [server/index.js#L495-L499](file:///Users/x/code/mediapeople/server/index.js#L495-L499) | 检查是否有权限访问线程 |
+| `ensureUserDefaults()` | [server/index.js#L440-L452](file:///Users/x/code/matchmaker/server/index.js#L440-L452) | 补全用户默认字段 |
+| `ensureRequestDefaults()` | [server/index.js#L428-L438](file:///Users/x/code/matchmaker/server/index.js#L428-L438) | 补全牵线请求默认字段 |
+| `getRequestContactStatus()` | [server/index.js#L478-L483](file:///Users/x/code/matchmaker/server/index.js#L478-L483) | 计算牵线请求联系状态 |
+| `buildMemberMatchmakerThreads()` | [server/index.js#L505-L542](file:///Users/x/code/matchmaker/server/index.js#L505-L542) | 创建红娘-会员聊天线程 |
+| `buildMemberMemberThread()` | [server/index.js#L544-L558](file:///Users/x/code/matchmaker/server/index.js#L544-L558) | 创建会员互聊天线程 |
+| `canAccessThread()` | [server/index.js#L495-L499](file:///Users/x/code/matchmaker/server/index.js#L495-L499) | 检查是否有权限访问线程 |
 
 ### 5.5 Token 机制详解
 
@@ -450,7 +450,7 @@ express.json({ limit: "2mb" })  ← 解析 JSON 请求体
   4. 检查 exp 是否过期
 ```
 
-Token 存储：前端保存在 `localStorage` 的 `mediapeople-dating-demo-v1:session`。
+Token 存储：前端保存在 `localStorage` 的 `matchmaker-dating-demo-v1:session`。
 
 ### 5.6 数据库连接池配置
 
@@ -458,8 +458,8 @@ Token 存储：前端保存在 `localStorage` 的 `mediapeople-dating-demo-v1:se
 const pool = new Pool({
   host: process.env.PGHOST || "localhost",
   port: Number(process.env.PGPORT || 5432),
-  database: process.env.PGDATABASE || "mediapeople",
-  user: process.env.PGUSER || "mediapeople",
+  database: process.env.PGDATABASE || "matchmaker",
+  user: process.env.PGUSER || "matchmaker",
   password: process.env.PGPASSWORD,
 });
 ```
@@ -843,7 +843,7 @@ POST /api/auth/matchmaker/register
 
 无第三方框架依赖，纯原生 HTML/CSS/JS。
 
-根目录 [package.json](file:///Users/x/code/mediapeople/package.json) 仅有一个开发依赖：
+根目录 [package.json](file:///Users/x/code/matchmaker/package.json) 仅有一个开发依赖：
 ```json
 {
   "dependencies": {
@@ -854,7 +854,7 @@ POST /api/auth/matchmaker/register
 
 ### 9.2 后端依赖
 
-[server/package.json](file:///Users/x/code/mediapeople/server/package.json)：
+[server/package.json](file:///Users/x/code/matchmaker/server/package.json)：
 ```json
 {
   "dependencies": {
@@ -956,7 +956,7 @@ node --check server/index.js
 # Docker Compose 配置检查
 POSTGRES_PASSWORD=dummy JWT_SECRET=dummy \
   docker compose -f compose.yml -f compose.ssl.yml config \
-  > /tmp/mediapeople-compose-check.yml
+  > /tmp/matchmaker-compose-check.yml
 ```
 
 ### 10.5 查看服务状态
@@ -966,7 +966,7 @@ POSTGRES_PASSWORD=dummy JWT_SECRET=dummy \
 docker compose -f compose.yml -f compose.ssl.yml ps
 
 # 查看 API 日志
-docker logs --tail=100 mediapeople-api
+docker logs --tail=100 matchmaker-api
 
 # 健康检查
 curl http://localhost:8098/api/health
@@ -976,14 +976,14 @@ curl http://localhost:8098/api/health
 
 ```bash
 # 备份
-docker exec mediapeople-postgres pg_dump \
-  -U mediapeople -d mediapeople -Fc \
+docker exec matchmaker-postgres pg_dump \
+  -U matchmaker -d matchmaker -Fc \
   -f /backup/backup-$(date +%F_%H%M%S).dump
 
 # 恢复
-docker exec mediapeople-postgres pg_restore \
+docker exec matchmaker-postgres pg_restore \
   --clean --if-exists \
-  -U mediapeople -d mediapeople /backup/文件名.dump
+  -U matchmaker -d matchmaker /backup/文件名.dump
 
 docker compose -f compose.yml -f compose.ssl.yml restart api
 ```
@@ -1020,11 +1020,11 @@ docker compose -f compose.yml -f compose.ssl.yml restart api
 | 项目 | 值 |
 |------|-----|
 | 服务器 | uk.sbbz.tech |
-| 部署目录 | `/opt/mediapeople` |
-| SSH 密钥 | `~/.ssh/mediapeople_uk_ed25519` |
-| 环境变量 | `/opt/mediapeople/.env` |
-| 数据目录 | `/opt/mediapeople/data/postgres` |
-| 备份目录 | `/opt/mediapeople/backup/postgres` |
+| 部署目录 | `/opt/matchmaker` |
+| SSH 密钥 | `~/.ssh/matchmaker_uk_ed25519` |
+| 环境变量 | `/opt/matchmaker/.env` |
+| 数据目录 | `/opt/matchmaker/data/postgres` |
+| 备份目录 | `/opt/matchmaker/backup/postgres` |
 
 ### 11.2 一键部署（推荐）
 
@@ -1050,12 +1050,12 @@ docker compose -f compose.yml -f compose.ssl.yml restart api
 # 1. 同步代码到服务器
 rsync -az --delete \
   --exclude '.git' --exclude '.env' --exclude 'data' \
-  -e 'ssh -i ~/.ssh/mediapeople_uk_ed25519' \
-  ./ root@uk.sbbz.tech:/opt/mediapeople/
+  -e 'ssh -i ~/.ssh/matchmaker_uk_ed25519' \
+  ./ root@uk.sbbz.tech:/opt/matchmaker/
 
 # 2. SSH 登录服务器
-ssh -i ~/.ssh/mediapeople_uk_ed25519 root@uk.sbbz.tech
-cd /opt/mediapeople
+ssh -i ~/.ssh/matchmaker_uk_ed25519 root@uk.sbbz.tech
+cd /opt/matchmaker
 
 # 3. 启动/重建全部服务
 docker compose -f compose.yml -f compose.ssl.yml up -d --build
@@ -1138,21 +1138,21 @@ curl -o /tmp/reset.out -w '%{http_code}\n' \
 
 项目 `说明/` 目录下包含 15 份详细文档：
 
-1. [01-项目概述.md](file:///Users/x/code/mediapeople/说明/01-项目概述.md)
-2. [02-技术架构.md](file:///Users/x/code/mediapeople/说明/02-技术架构.md)
-3. [03-文件结构.md](file:///Users/x/code/mediapeople/说明/03-文件结构.md)
-4. [04-数据库设计.md](file:///Users/x/code/mediapeople/说明/04-数据库设计.md)
-5. [05-API接口文档.md](file:///Users/x/code/mediapeople/说明/05-API接口文档.md)
-6. [06-前端说明.md](file:///Users/x/code/mediapeople/说明/06-前端说明.md)
-7. [07-部署指南.md](file:///Users/x/code/mediapeople/说明/07-部署指南.md)
-8. [08-安全机制.md](file:///Users/x/code/mediapeople/说明/08-安全机制.md)
-9. [09-技术债务与开发路线.md](file:///Users/x/code/mediapeople/说明/09-技术债务与开发路线.md)
-10. [10-操作手册.md](file:///Users/x/code/mediapeople/说明/10-操作手册.md)
-11. [11-前端界面交互说明.md](file:///Users/x/code/mediapeople/说明/11-前端界面交互说明.md)
-12. [12-红娘端界面交互说明.md](file:///Users/x/code/mediapeople/说明/12-红娘端界面交互说明.md)
-13. [13-管理后台界面交互说明.md](file:///Users/x/code/mediapeople/说明/13-管理后台界面交互说明.md)
-14. [14-综合预览端界面交互说明.md](file:///Users/x/code/mediapeople/说明/14-综合预览端界面交互说明.md)
-15. [15-模态弹窗与全局交互说明.md](file:///Users/x/code/mediapeople/说明/15-模态弹窗与全局交互说明.md)
+1. [01-项目概述.md](file:///Users/x/code/matchmaker/说明/01-项目概述.md)
+2. [02-技术架构.md](file:///Users/x/code/matchmaker/说明/02-技术架构.md)
+3. [03-文件结构.md](file:///Users/x/code/matchmaker/说明/03-文件结构.md)
+4. [04-数据库设计.md](file:///Users/x/code/matchmaker/说明/04-数据库设计.md)
+5. [05-API接口文档.md](file:///Users/x/code/matchmaker/说明/05-API接口文档.md)
+6. [06-前端说明.md](file:///Users/x/code/matchmaker/说明/06-前端说明.md)
+7. [07-部署指南.md](file:///Users/x/code/matchmaker/说明/07-部署指南.md)
+8. [08-安全机制.md](file:///Users/x/code/matchmaker/说明/08-安全机制.md)
+9. [09-技术债务与开发路线.md](file:///Users/x/code/matchmaker/说明/09-技术债务与开发路线.md)
+10. [10-操作手册.md](file:///Users/x/code/matchmaker/说明/10-操作手册.md)
+11. [11-前端界面交互说明.md](file:///Users/x/code/matchmaker/说明/11-前端界面交互说明.md)
+12. [12-红娘端界面交互说明.md](file:///Users/x/code/matchmaker/说明/12-红娘端界面交互说明.md)
+13. [13-管理后台界面交互说明.md](file:///Users/x/code/matchmaker/说明/13-管理后台界面交互说明.md)
+14. [14-综合预览端界面交互说明.md](file:///Users/x/code/matchmaker/说明/14-综合预览端界面交互说明.md)
+15. [15-模态弹窗与全局交互说明.md](file:///Users/x/code/matchmaker/说明/15-模态弹窗与全局交互说明.md)
 
 ---
 

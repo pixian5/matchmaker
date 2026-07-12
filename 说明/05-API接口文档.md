@@ -1,6 +1,6 @@
 2026-06-27 | Codex 修订
 
-# 缘定 — API 接口文档
+# MatchMaker — API 接口文档
 
 ## 2026-06-27 当前修订摘要
 
@@ -1317,7 +1317,7 @@ graph TD
   "agencies": [
     {
       "id": "a1",
-      "name": "缘定北京旗舰店",
+      "name": "MatchMaker北京旗舰店",
       "city": "北京",
       "createdAt": "2023-01-01T00:00:00.000Z"
     }
