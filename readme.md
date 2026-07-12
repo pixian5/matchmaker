@@ -292,3 +292,13 @@ ssh -o StrictHostKeyChecking=no root@uk.sbbz.tech \
 ```
 
 其它说明文件按主题拆分：项目概述、技术架构、文件结构、数据库、API、前端、部署、安全、技术债务、界面交互、模态弹窗等。
+# 开发质量门禁
+
+提交涉及消息、实时通信或聊天页面时，必须先执行：
+
+```bash
+npm test
+cd uniapp && npm ci && npm run build:h5
+```
+
+`npm test` 会验证服务端历史消息和两套聊天页面都以线程 `seq` 作为首要顺序，并检查 JavaScript 语法。GitHub Actions 会在每次 push 和 Pull Request 自动执行这些检查；检查失败时不得合并或部署。
