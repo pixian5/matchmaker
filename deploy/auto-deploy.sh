@@ -18,7 +18,7 @@ bark_notify() {
   local esc_title esc_body
   esc_title=$(printf '%s' "$title" | sed 's/\\/\\\\/g; s/"/\\"/g')
   esc_body=$(printf '%s' "$body" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  curl -s -o /dev/null -X POST "https://api.day.app/${BARK_KEY}" \
+  curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.day.app/${BARK_KEY}" \
     -H "Content-Type: application/json" \
     -d "{\"title\":\"$esc_title\",\"body\":\"$esc_body\",\"group\":\"mediapeople-deploy\"}" \
     --max-time 10 || true
@@ -32,12 +32,17 @@ bark_on_exit() {
   local commit_hash commit_msg
   commit_hash=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
   commit_msg=$(git -C "$REPO_DIR" log -1 --pretty=format:'%s' 2>/dev/null || echo "")
+  log "bark_on_exit 触发: exit_code=${exit_code} elapsed=${elapsed}s commit=${commit_hash}"
   if [ $exit_code -eq 0 ]; then
-    bark_notify "mediapeople 部署成功" "耗时 ${elapsed}s | ${commit_hash} ${commit_msg}"
+    local http_code
+    http_code=$(bark_notify "mediapeople 部署成功" "耗时 ${elapsed}s | ${commit_hash} ${commit_msg}")
+    log "bark_notify 返回: http_code=${http_code}"
   else
     local err_tail
     err_tail=$(tail -5 "$LOG_FILE" 2>/dev/null | tr '\n' ' ' | head -c 200)
-    bark_notify "mediapeople 部署失败" "exit=${exit_code} 耗时 ${elapsed}s | ${commit_hash} ${commit_msg} | ${err_tail}"
+    local http_code
+    http_code=$(bark_notify "mediapeople 部署失败" "exit=${exit_code} 耗时 ${elapsed}s | ${commit_hash} ${commit_msg} | ${err_tail}")
+    log "bark_notify 返回: http_code=${http_code}"
   fi
 }
 trap bark_on_exit EXIT
