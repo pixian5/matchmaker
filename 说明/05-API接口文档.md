@@ -1,6 +1,6 @@
 2026-06-27 | Codex 修订
 
-# 缘定传媒人 — API 接口文档
+# 缘定 — API 接口文档
 
 ## 2026-06-27 当前修订摘要
 
@@ -353,21 +353,142 @@ POST /api/client/real-name
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | realName | string | 是 | 真实姓名 |
-| idCard | string | 是 | 身份证号 |
+| idCard | string | 是 | 身份证号（18位，最后一位可为X） |
 | phone | string | 否 | 补充手机号（注册时只填邮箱的情况） |
 
 **响应**：`{ user, state }`
 
+**认证流程**：
+
+```
+1. 身份证号格式校验（18位正则：/^\d{17}[\dXx]$/）
+2. 从身份证号解析出生日期，计算实际年龄
+3. 年龄 < 18 → 拒绝认证（未满18岁不可注册）
+4. 年龄 > 100 → 拒绝认证（年龄异常）
+5. 保存真实姓名、身份证号（完整）、脱敏身份证号、实际年龄
+6. 设置 realNameVerified = true
+```
+
 **错误场景**：
 
 - realName 或 idCard 为空 → 400 `{ "error": "name_and_idcard_required" }`
+- 身份证号格式错误 → 400 `{ "error": "idcard_format_invalid", "message": "身份证号格式错误" }`
+- 未满18岁 → 400 `{ "error": "underage", "message": "未满18岁，无法完成实名认证" }`
+- 年龄异常 → 400 `{ "error": "invalid_age", "message": "年龄异常，请检查身份证号" }`
 - 用户不存在 → 404 `{ "error": "user_not_found" }`
 
 **复杂场景**：
 
 - 如果注册时只填了邮箱没填手机号，实名时需要补填手机号
 - 认证后 `realNameVerified` 设为 true
-- `realName` 和 `idCard` 存储在 raw JSON 中，不返回前端
+- `realName` 和完整 `idCard` 存储在 raw JSON 中，不返回前端
+- 同时返回脱敏后的身份证号 `idCardMasked`（前6后4，中间8位用*）
+- 从身份证解析出的 `age` 同步更新到用户资料
+
+---
+
+### 提交学历认证
+
+```
+POST /api/client/education-verify
+```
+
+**需要 `client` 角色认证**。需先完成实名认证。
+
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| school | string | 是 | 学校名称 |
+| degree | string | 是 | 学历：高中/大专/本科/硕士/博士 |
+| major | string | 是 | 专业 |
+| graduationYear | number | 是 | 毕业年份 |
+| diplomaNo | string | 否 | 毕业证编号 |
+
+**响应**：`{ user, state }`
+
+**错误场景**：
+
+- 信息不完整 → 400 `{ "error": "education_info_incomplete" }`
+- 学历类型无效 → 400 `{ "error": "invalid_degree" }`
+- 毕业年份无效 → 400 `{ "error": "invalid_graduation_year" }`
+- 未先完成实名认证 → 400 `{ "error": "realname_required_first", "message": "请先完成实名认证" }`
+- 用户不存在 → 404 `{ "error": "user_not_found" }`
+
+**说明**：
+- 学历认证为模拟学信网验证，开发环境直接通过
+- 认证成功后 `education.verified = true`
+- 资料列表接口返回的 `badges.education` 标记为 true
+
+---
+
+### 提交视频认证
+
+```
+POST /api/client/video-verify
+```
+
+**需要 `client` 角色认证**。需先完成实名认证。
+
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| videoToken | string | 是 | 视频认证凭证（模拟活体检测 token） |
+| actions | array | 否 | 完成的活体动作列表：`["blink", "open_mouth"]` |
+
+**响应**：`{ user, state }`
+
+**认证流程**：
+
+```
+1. 校验 videoToken 不为空
+2. 校验已完成实名认证
+3. 活体检测：要求完成眨眼(blink)+张嘴(open_mouth)两个动作
+4. 动作不完整 → 400 liveness_check_failed
+5. 认证通过，设置 videoVerified = true
+```
+
+**错误场景**：
+
+- videoToken 缺失 → 400 `{ "error": "video_token_required" }`
+- 未先完成实名认证 → 400 `{ "error": "realname_required_first" }`
+- 活体检测未通过 → 400 `{ "error": "liveness_check_failed", "message": "活体检测未通过，请重试" }`
+- 用户不存在 → 404 `{ "error": "user_not_found" }`
+
+**说明**：
+- 视频认证为模拟活体检测，开发环境传入指定动作即通过
+- 认证成功后 `videoVerified = true`
+- 资料列表接口返回的 `badges.video` 标记为 true
+
+---
+
+### 获取认证状态
+
+```
+GET /api/client/verify-status
+```
+
+**需要 `client` 角色认证**。获取当前登录用户的三项认证状态。
+
+**响应**：
+
+```json
+{
+  "realNameVerified": true,
+  "educationVerified": true,
+  "videoVerified": false,
+  "age": 29,
+  "education": {
+    "school": "XX大学",
+    "degree": "本科",
+    "major": "计算机科学",
+    "graduationYear": 2018,
+    "verified": true,
+    "verifiedAt": "2026-07-12T10:00:00.000Z"
+  }
+}
+```
 
 ---
 
@@ -593,26 +714,37 @@ PATCH /api/matchmaker/users/:id/profile-review
 POST /api/chat/threads/:id/messages
 ```
 
-**需要 `client`/`matchmaker`/`admin` 角色认证**。
+**需要 `client`/`matchmaker` 角色认证**。
 
 **请求参数**：
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | content | string | 是 | 消息内容 |
+| clientMsgNo | string | 否 | 客户端消息编号，用于临时消息转正和去重 |
+| clientSeq | number | 否 | 客户端消息序号，用于同设备内排序 |
+| deviceId | string | 否 | 设备 ID，用于多设备区分 |
+| createdAt | string | 否 | 客户端创建时间 |
 
-**响应**：`{ message, state }`
+**响应**：`{ message, thread, sensitiveWords? }`
 
 **发送流程**：
 
 ```
-1. 查找聊天线程
-2. 验证发送者是否是参与者（admin 除外）
-3. 验证线程状态是否为 active
-4. 如果是 member_member 类型，验证 memberChatEnabled 是否为 true
-5. 创建消息
-6. 更新线程的 lastMessageAt 和 lastMessagePreview
-7. 返回消息和完整状态
+1. 敏感词检测：检查 content 是否包含敏感词
+   - 包含敏感词：自动替换为 * 后存储，响应中返回 sensitiveWords 列表
+2. 查找聊天线程
+3. 验证发送者是否是参与者（admin 除外）
+4. 验证线程状态是否为 active
+5. 验证是否被对方拉黑 → 被拉黑则 403
+6. 如果是 member_member 类型，验证 memberChatEnabled 是否为 true
+7. 数据库事务：锁住线程行，计算下一个 seq
+8. 创建消息（含 clientMsgNo/clientSeq/deviceId）
+9. 更新线程的 lastMessageAt 和 lastMessagePreview
+10. 提交事务
+11. 失效 state 缓存
+12. WebSocket 广播消息
+13. 返回消息和线程信息
 ```
 
 **错误场景**：
@@ -620,8 +752,89 @@ POST /api/chat/threads/:id/messages
 - 线程不存在 → 404 `{ "error": "thread_not_found" }`
 - 非参与者 → 403 `{ "error": "forbidden" }`
 - 线程非 active → 400 `{ "error": "thread_inactive" }`
+- 被对方拉黑 → 403 `{ "error": "blocked_by_peer", "message": "对方已拉黑你，无法发送消息" }`
 - member_member 未开启 → 403 `{ "error": "member_chat_disabled" }`
 - 内容为空 → 400 `{ "error": "content_required" }`
+
+**敏感词过滤**：
+- 敏感词类型：转账/投资/博彩/加微信/二维码/约炮等 30+ 关键词
+- 处理方式：自动替换为等长度的 `*`
+- 响应字段：`sensitiveWords` 数组，列出命中的敏感词
+- 消息存储：`originalContentMasked: true` 标记内容被处理，`sensitiveWords` 记录命中词
+
+---
+
+### 拉黑用户
+
+```
+POST /api/client/blocks
+```
+
+**需要 `client`/`matchmaker` 角色认证**。
+
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| blockedId | string | 是 | 被拉黑用户 ID |
+| reason | string | 否 | 拉黑原因 |
+
+**响应**：`{ block }`
+
+**错误场景**：
+
+- blockedId 为空 → 400 `{ "error": "blocked_id_required" }`
+- 拉黑自己 → 400 `{ "error": "cannot_block_self" }`
+
+---
+
+### 取消拉黑
+
+```
+DELETE /api/client/blocks/:blockedId
+```
+
+**需要 `client`/`matchmaker` 角色认证**。
+
+**响应**：`{ ok: true }`
+
+---
+
+### 获取拉黑列表
+
+```
+GET /api/client/blocks
+```
+
+**需要 `client`/`matchmaker` 角色认证**。
+
+**响应**：`{ list: [{ id, blockerId, blockedId, reason, createdAt }] }`
+
+---
+
+### 举报用户
+
+```
+POST /api/client/reports
+```
+
+**需要 `client`/`matchmaker` 角色认证**。
+
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| reportedId | string | 是 | 被举报用户 ID |
+| reason | string | 是 | 举报类型：fraud/harassment/fake_profile/spam/inappropriate_content/other |
+| detail | string | 否 | 举报详情描述 |
+
+**响应**：`{ report }`
+
+**错误场景**：
+
+- reportedId 或 reason 为空 → 400 `{ "error": "reported_id_and_reason_required" }`
+- 举报自己 → 400 `{ "error": "cannot_report_self" }`
+- 举报类型无效 → 400 `{ "error": "invalid_reason", "message": "举报类型无效" }`
 
 ---
 
@@ -720,6 +933,41 @@ POST /api/admin/deals/simulate
 无参数，生成一笔 ¥399 的成交记录。
 
 **响应**：`{ deal, state }`
+
+---
+
+### 获取举报列表
+
+```
+GET /api/admin/reports
+```
+
+**需要管理员认证**。
+
+**响应**：`{ list: [{ id, reporterId, reportedId, reason, detail, status, createdAt }] }`，最多 100 条，按时间倒序。
+
+---
+
+### 处理举报
+
+```
+PATCH /api/admin/reports/:id
+```
+
+**需要管理员认证**。
+
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| status | string | 是 | 处理状态：pending/processing/resolved/dismissed |
+
+**响应**：`{ report }`
+
+**错误场景**：
+
+- 举报不存在 → 404 `{ "error": "report_not_found" }`
+- 状态无效 → 400 `{ "error": "invalid_status" }`
 
 ---
 
