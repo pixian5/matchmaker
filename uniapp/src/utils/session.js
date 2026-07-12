@@ -1,4 +1,5 @@
 const LEGACY_SESSION_KEY = "matchmaker_session";
+const RETURN_URL_KEY = "__MATCHMAKER_RETURN_URL__";
 
 const INITIAL_HASH_PATH = (() => {
   try {
@@ -92,4 +93,21 @@ export function redirectToPath(path) {
     return;
   }
   uni.reLaunch({ url: path });
+}
+
+export function saveReturnUrl(url = "") {
+  if (!url.startsWith("#/pages/") || url.includes("#/pages/login/index")) return;
+  try {
+    window.sessionStorage.setItem(RETURN_URL_KEY, url);
+  } catch (error) {}
+}
+
+export function consumeReturnUrl() {
+  try {
+    const url = window.sessionStorage.getItem(RETURN_URL_KEY) || "";
+    window.sessionStorage.removeItem(RETURN_URL_KEY);
+    return url.startsWith("#/pages/") ? url : "";
+  } catch (error) {
+    return "";
+  }
 }

@@ -52,6 +52,7 @@
 import { ref, reactive } from 'vue';
 import { registerApi, loginApi } from '@/api/auth';
 import { useUserStore } from '@/store/user';
+import { consumeReturnUrl } from '@/utils/session';
 
 const userStore = useUserStore();
 
@@ -106,8 +107,13 @@ const handleRegister = async () => {
     const user = loginRes.data?.user || loginRes.user || { id: loginRes.data?.userId || loginRes.userId };
     if (token) {
       userStore.setLogin({ token, user });
+      const returnUrl = consumeReturnUrl();
       setTimeout(() => {
-        uni.switchTab({ url: '/pages/index/index' });
+        if (returnUrl) {
+          window.location.hash = returnUrl;
+        } else {
+          uni.switchTab({ url: '/pages/index/index' });
+        }
       }, 1000);
     }
   } catch (error) {

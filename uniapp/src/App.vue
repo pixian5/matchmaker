@@ -1,7 +1,7 @@
 <script setup>
 import { onLaunch, onShow } from "@dcloudio/uni-app";
 import { useUserStore } from "./store/user";
-import { getCurrentPagePath, getInitialPagePath, getRoleForPath, redirectToPath } from "./utils/session";
+import { getCurrentPagePath, getInitialPagePath, getRoleForPath, redirectToPath, saveReturnUrl } from "./utils/session";
 
 // 页面路径所属的角色前缀
 const MATCHMAKER_PAGES = "/pages/matchmaker/";
@@ -49,6 +49,9 @@ function checkRedirect(userStore, requestedPath = getPagePath()) {
   // 未登录：只允许停留在登录页
   if (!isLoggedIn) {
     if (!path || isLoginPage(path)) return;
+    if (role === "client" && typeof window !== "undefined") {
+      saveReturnUrl(window.location.hash);
+    }
     redirectToPath(loginByPath(path));
     return;
   }

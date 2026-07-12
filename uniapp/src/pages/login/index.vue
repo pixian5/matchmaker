@@ -31,6 +31,7 @@
 import { ref, reactive } from 'vue';
 import { loginApi } from '@/api/auth';
 import { useUserStore } from '@/store/user';
+import { consumeReturnUrl } from '@/utils/session';
 
 const userStore = useUserStore();
 
@@ -60,8 +61,13 @@ const handleLogin = async () => {
     if (token) {
       userStore.setLogin({ token, user });
       uni.showToast({ title: '登录成功', icon: 'success' });
+      const returnUrl = consumeReturnUrl();
       setTimeout(() => {
-        uni.switchTab({ url: '/pages/index/index' });
+        if (returnUrl) {
+          window.location.hash = returnUrl;
+        } else {
+          uni.switchTab({ url: '/pages/index/index' });
+        }
       }, 1000);
     } else {
       throw new Error('登录失败，未获取到凭证');
