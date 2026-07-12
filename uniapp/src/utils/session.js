@@ -13,6 +13,16 @@ export function getRoleForPath(path = "") {
 }
 
 export function getCurrentPagePath() {
+  // H5 多标签页/路由切换时，以当前地址栏 hash 为准，避免 getCurrentPages 返回旧页面栈。
+  try {
+    if (typeof window !== "undefined" && window.location.hash) {
+      const hashPath = window.location.hash.slice(1).split("?")[0];
+      if (hashPath.startsWith("/pages/")) return hashPath;
+    }
+  } catch (error) {
+    // fallback to uni page stack
+  }
+
   try {
     const pages = getCurrentPages();
     const page = pages[pages.length - 1];

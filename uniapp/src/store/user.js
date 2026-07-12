@@ -82,10 +82,31 @@ export const useUserStore = defineStore("user", {
     restoreSession(role = getCurrentRole()) {
       try {
         const session = readSession(role);
-        if (session && session.token) {
+        this.isLoggedIn = false;
+        this.token = "";
+        this.role = "";
+        this.userId = "";
+        this.name = "";
+        this.gender = "";
+        this.age = 0;
+        this.city = "";
+        this.avatar = "";
+        this.isVip = false;
+        this.vipExpiresAt = "";
+        this.servicePlan = null;
+        this.profile = null;
+        this.matchmakerId = "";
+        this.matchmakerName = "";
+        this.matchmakerCode = "";
+        this.agencyId = "";
+        this.adminLoggedIn = false;
+        this.adminId = "";
+        this.adminName = "";
+
+        if (session?.token) {
           this.isLoggedIn = true;
           this.token = session.token;
-          this.role = session.role || "";
+          this.role = session.role || role;
           this.userId = session.userId || "";
           this.name = session.name || "";
           this.gender = session.gender || "";

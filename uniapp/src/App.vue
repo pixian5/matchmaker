@@ -1,7 +1,7 @@
 <script setup>
 import { onLaunch, onShow } from "@dcloudio/uni-app";
 import { useUserStore } from "./store/user";
-import { getRoleForPath } from "./utils/session";
+import { getCurrentPagePath, getRoleForPath } from "./utils/session";
 
 // 页面路径所属的角色前缀
 const MATCHMAKER_PAGES = "/pages/matchmaker/";
@@ -14,10 +14,7 @@ const MATCHMAKER_HOME = "/pages/matchmaker/workbench/index";
 const ADMIN_HOME = "/pages/admin/console/index";
 
 function getPagePath() {
-  const pages = getCurrentPages();
-  if (!pages.length) return "";
-  const page = pages[pages.length - 1];
-  return `/${page.route}`;
+  return getCurrentPagePath();
 }
 
 function isLoginPage(path) {
@@ -68,9 +65,7 @@ onShow(() => {
   // 每次显示时校验角色与页面匹配
   const userStore = useUserStore();
   const path = getPagePath();
-  if (!userStore.isLoggedIn) {
-    userStore.restoreSession(getRoleForPath(path));
-  }
+  userStore.restoreSession(getRoleForPath(path));
   checkRedirect(userStore);
 });
 </script>
