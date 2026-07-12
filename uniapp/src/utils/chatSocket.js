@@ -1,4 +1,5 @@
 const SESSION_KEY = "matchmaker_session";
+const REMOTE_WS_HOST = "wss://uk.sbbz.tech:1314";
 const listeners = new Set();
 
 let socket = null;
@@ -53,8 +54,8 @@ function getSocketUrl(token) {
   return `${protocol}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
   // #endif
 
-  // #ifdef MP-WEIXIN
-  return `wss://uk.sbbz.tech:9446/ws?token=${encodeURIComponent(token)}`;
+  // #ifdef MP-WEIXIN || MP-ALIPAY || MP-BAIDU || MP-TOUTIAO || MP-QQ || MP-KUAISHOU || MP-JD || MP-XHS || MP-LARK || MP-HARMONY || APP-PLUS || APP || APP-HARMONY
+  return `${REMOTE_WS_HOST}/ws?token=${encodeURIComponent(token)}`;
   // #endif
 
   return "";
