@@ -56,8 +56,11 @@ function checkRedirect(userStore, requestedPath = getPagePath()) {
     return;
   }
 
+  // 已登录：路径为空时不做重定向（等待 hash 正常化或页面栈生效）
+  if (!path) return;
+
   // 已登录：角色与当前页面不匹配则重定向到对应首页
-  if (path && !belongsToRole(path, role)) {
+  if (!belongsToRole(path, role)) {
     redirectToPath(redirectByRole(role));
   }
 }

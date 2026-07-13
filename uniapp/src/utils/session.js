@@ -29,11 +29,13 @@ export function getRoleForPath(path = "") {
 }
 
 export function getCurrentPagePath() {
-  // H5 多标签页/路由切换时，以当前地址栏 hash 为准，避免 getCurrentPages 返回旧页面栈。
+  // H5 多标签页/路由切换时，优先以当前地址栏 hash 为准，避免 getCurrentPages 返回旧页面栈。
+  // 但当 hash 为空（如 navigateBack 后暂时变成 #/）时，应该用页面栈来确定真实页面。
   try {
     if (typeof window !== "undefined" && window.location.hash) {
       const hashPath = window.location.hash.slice(1).split("?")[0];
       if (hashPath.startsWith("/pages/")) return hashPath;
+      // hash 为空或非标准页面路径时，fallback 到页面栈
     }
   } catch (error) {
     // fallback to uni page stack
