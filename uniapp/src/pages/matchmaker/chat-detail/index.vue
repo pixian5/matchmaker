@@ -45,6 +45,7 @@ const userStore = useUserStore();
 const appStore = useAppStore();
 
 const threadId = ref('');
+const chatTitle = ref('聊天');
 const messages = ref([]);
 const inputText = ref('');
 const sending = ref(false);
@@ -72,9 +73,34 @@ const inputPlaceholder = computed(() => {
 onLoad((options) => {
   if (options.threadId) {
     threadId.value = options.threadId;
+    updateChatTitle();
     loadMessages();
   }
 });
+
+const getChatTitle = () => {
+  const currentThread = thread.value;
+  if (!currentThread) return '聊天';
+  const participants = currentThread.participants || [];
+  if (currentThread.type === 'matchmaker_group') {
+    const names = participants
+      .filter((participant) => participant.role === 'client')
+      .map((participant) => appStore.getUserById(participant.id)?.name || participant.name)
+      .filter(Boolean);
+    return names.length ? `三方群聊（${names.join('、')}）` : '三方群聊';
+  }
+  const client = participants.find((participant) => participant.role === 'client');
+  return appStore.getUserById(client?.id)?.name || client?.name || '会员聊天';
+};
+
+const updateChatTitle = async () => {
+  chatTitle.value = getChatTitle();
+  uni.setNavigationBarTitle({ title: chatTitle.value });
+  if (chatTitle.value !== '聊天' && chatTitle.value !== '会员聊天' && chatTitle.value !== '三方群聊') return;
+  await appStore.fetchState();
+  chatTitle.value = getChatTitle();
+  uni.setNavigationBarTitle({ title: chatTitle.value });
+};
 
 onShow(() => {
   addChatSocketListener(handleRealtimeMessage);

@@ -40,13 +40,14 @@
 
 <script setup>
 import { computed, nextTick, ref, onUnmounted } from 'vue';
-import { getChatMessagesApi, sendMessageApi } from '@/api/chat';
+import { getChatMessagesApi, getChatThreadsApi, sendMessageApi } from '@/api/chat';
 import { useUserStore } from '@/store/user';
 import { addChatSocketListener, ensureChatSocket, removeChatSocketListener } from '@/utils/chatSocket';
 import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 
 const userStore = useUserStore();
 const threadId = ref('');
+const chatTitle = ref('聊天');
 const messages = ref([]);
 const inputText = ref('');
 const sending = ref(false);
@@ -72,9 +73,25 @@ onLoad((options) => {
     if (options.draft) {
       inputText.value = decodeURIComponent(options.draft);
     }
+    updateChatTitle();
     loadMessages();
   }
 });
+
+const updateChatTitle = async () => {
+  uni.setNavigationBarTitle({ title: chatTitle.value });
+  try {
+    const res = await getChatThreadsApi();
+    const currentThread = (res.data?.list || []).find((item) => item.id === threadId.value);
+    const name = currentThread?.otherUser?.name;
+    if (name) {
+      chatTitle.value = name;
+      uni.setNavigationBarTitle({ title: name });
+    }
+  } catch (error) {
+    // 标题获取失败时保留“聊天”兜底
+  }
+};
 
 onShow(() => {
   addChatSocketListener(handleRealtimeMessage);
