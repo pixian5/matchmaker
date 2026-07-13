@@ -1,0 +1,21 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: uk.sbbz.tech
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            cd /opt/matchmaker
+            git pull --ff-only origin master
+            bash /opt/matchmaker/deploy/auto-deploy.sh
