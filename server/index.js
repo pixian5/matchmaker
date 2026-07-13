@@ -992,6 +992,34 @@ function normalizeEmail(value) {
   return email ? email.toLowerCase() : null;
 }
 
+// 输入格式校验：避免存入明显非法的字符串，DB 唯一索引兜底重复值
+const PHONE_PATTERN = /^1[3-9]\d{9}$/; // 中国大陆手机号
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAME_PATTERN = /^[\u4e00-\u9fa5A-Za-z·\s]{1,30}$/; // 中文/英文/中间点，1-30 字
+const WECHAT_PATTERN = /^[A-Za-z0-9_-]{6,20}$/;
+const ID_CARD_PATTERN = /^\d{17}[\dXx]$/;
+
+function validatePhone(value) {
+  const phone = normalizePhone(value);
+  return PHONE_PATTERN.test(phone) ? phone : null;
+}
+
+function validateEmail(value) {
+  const email = normalizeEmail(value);
+  return (email && EMAIL_PATTERN.test(email)) ? email : null;
+}
+
+function validateName(value) {
+  const name = String(value || "").trim();
+  return NAME_PATTERN.test(name) ? name : null;
+}
+
+function validateWechat(value) {
+  const wechat = String(value || "").trim();
+  if (!wechat) return null; // wechat 选填
+  return WECHAT_PATTERN.test(wechat) ? wechat : null;
+}
+
 // 简单的内存缓存，减少频繁的全量数据库查询
 let stateCache = null;
 let stateCacheTime = 0;
@@ -1563,12 +1591,51 @@ app.post("/api/auth/matchmaker/login", async (request, response) => {
 
 app.post("/api/auth/client/register", async (request, response) => {
   const input = request.body || {};
-  const phone = normalizePhone(input.phone);
-  const email = normalizeEmail(input.email);
+  // 必须二选一：手机号或邮箱；手机号需符合中国大陆号段，邮箱需符合基本格式
+  const phone = validatePhone(input.phone);
+  const email = validateEmail(input.email);
   if (!phone && !email) {
-    response.status(400).json({ error: "phone_or_email_required" });
+    response.status(400).json({ error: "phone_or_email_required", message: "请提供有效的手机号或邮箱" });
     return;
   }
+  if (phone && input.phone && !phone) {
+    response.status(400).json({ error: "phone_invalid", message: "手机号格式不正确" });
+    return;
+  }
+  if (input.email && !email) {
+    response.status(400).json({ error: "email_invalid", message: "邮箱格式不正确" });
+    return;
+  }
+  // 姓名必填，限中文/英文
+  const name = validateName(input.name);
+  if (!name) {
+    response.status(400).json({ error: "name_invalid", message: "请提供有效的姓名（中文或英文，1-30 字）" });
+    return;
+  }
+  // 性别校验
+  if (input.gender && !["男", "女"].includes(input.gender)) {
+    response.status(400).json({ error: "gender_invalid", message: "性别只能是男或女" });
+    return;
+  }
+  // 年龄范围
+  const age = Number(input.age || 0);
+  if (age && (age < 18 || age > 99)) {
+    response.status(400).json({ error: "age_invalid", message: "年龄范围 18-99" });
+    return;
+  }
+  // 密码长度
+  const password = String(input.password || "");
+  if (password.length < 6 || password.length > 64) {
+    response.status(400).json({ error: "password_invalid", message: "密码长度 6-64 字符" });
+    return;
+  }
+  // wechat 选填但若提供需符合格式
+  if (input.wechat && !validateWechat(input.wechat)) {
+    response.status(400).json({ error: "wechat_invalid", message: "微信号格式为 6-20 位字母数字下划线" });
+    return;
+  }
+  // 字符串字段长度上限
+  const trimStr = (value, max) => String(value || "").trim().slice(0, max);
   const matchmakerRes = await pool.query("select id from matchmakers order by id");
   const allMatchmakerIds = matchmakerRes.rows.map((item) => item.id);
   const validMatchmakerIds = new Set(allMatchmakerIds);
@@ -1578,15 +1645,15 @@ app.post("/api/auth/client/register", async (request, response) => {
 
   const user = {
     id: `u${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`,
-    name: String(input.name || "").trim(),
+    name,
     gender: input.gender || null,
-    age: Number(input.age || 0),
-    city: String(input.city || "").trim(),
-    job: String(input.job || "").trim(),
-    wechat: String(input.wechat || "").trim(),
+    age,
+    city: trimStr(input.city, 30),
+    job: trimStr(input.job, 30),
+    wechat: validateWechat(input.wechat) || null,
     phone: phone || null,
     email,
-    passwordHash: hashPassword(String(input.password || "")),
+    passwordHash: hashPassword(password),
     registeredAt: new Date().toISOString(),
     accountStatus: "active",
     realNameVerified: false,
@@ -1595,8 +1662,8 @@ app.post("/api/auth/client/register", async (request, response) => {
     vip: false,
     matchmakerIds,
     profileByMatchmaker: {},
-    bio: String(input.bio || "").trim(),
-    requirements: String(input.requirements || "").trim(),
+    bio: trimStr(input.bio, 500),
+    requirements: trimStr(input.requirements, 500),
     photo: input.photo || null,
   };
   try {
@@ -1728,22 +1795,42 @@ app.post("/api/reset", requireAuth(["admin"]), async (_request, response) => {
 app.patch("/api/client/profile", requireAuth(["client"]), async (request, response) => {
   const userId = request.user.sub;
   const { name, gender, age, city, job, wechat, bio, requirements, photo, avatar } = request.body || {};
-  
+
+  // 字段格式校验：仅在用户提交了对应字段时才校验
+  if (name !== undefined) {
+    const normalizedName = validateName(name);
+    if (!normalizedName) return response.status(400).json({ error: "name_invalid", message: "姓名为中文或英文，1-30 字" });
+  }
+  if (gender !== undefined && gender !== null && !["男", "女"].includes(gender)) {
+    return response.status(400).json({ error: "gender_invalid", message: "性别只能是男或女" });
+  }
+  if (age !== undefined && age !== null) {
+    const ageNum = Number(age);
+    if (!Number.isFinite(ageNum) || ageNum < 18 || ageNum > 99) {
+      return response.status(400).json({ error: "age_invalid", message: "年龄范围 18-99" });
+    }
+  }
+  if (wechat !== undefined && wechat !== null && wechat !== "" && !validateWechat(wechat)) {
+    return response.status(400).json({ error: "wechat_invalid", message: "微信号格式为 6-20 位字母数字下划线" });
+  }
+
   const userRes = await pool.query("select raw from users where id = $1", [userId]);
   if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
-  
+
   const user = ensureUserDefaults(userRes.rows[0].raw);
   const previousPublishedProfile = buildMatchmakerProfilePayload(user);
-  user.name = name !== undefined ? name.trim() : user.name;
+  const trimStr = (value, max) => String(value || "").trim().slice(0, max);
+  user.name = name !== undefined ? validateName(name) || user.name : user.name;
   user.gender = gender !== undefined ? gender : user.gender;
-  user.age = Number.isFinite(Number(age)) ? Number(age) : user.age;
-  user.city = city !== undefined ? city.trim() : user.city;
-  user.job = job !== undefined ? job.trim() : user.job;
-  user.wechat = wechat !== undefined ? wechat.trim() : user.wechat;
-  user.bio = bio !== undefined ? bio.trim() : user.bio;
-  user.requirements = requirements !== undefined ? requirements.trim() : user.requirements;
-  user.photo = photo !== undefined ? String(photo).trim() : avatar !== undefined ? String(avatar).trim() : user.photo;
-  
+  const ageNum = Number(age);
+  user.age = (age !== undefined && Number.isFinite(ageNum)) ? ageNum : user.age;
+  user.city = city !== undefined ? trimStr(city, 30) : user.city;
+  user.job = job !== undefined ? trimStr(job, 30) : user.job;
+  user.wechat = wechat !== undefined ? (validateWechat(wechat) || user.wechat) : user.wechat;
+  user.bio = bio !== undefined ? trimStr(bio, 500) : user.bio;
+  user.requirements = requirements !== undefined ? trimStr(requirements, 500) : user.requirements;
+  user.photo = photo !== undefined ? String(photo).trim().slice(0, 500) : (avatar !== undefined ? String(avatar).trim().slice(0, 500) : user.photo);
+
   const profilePayload = buildMatchmakerProfilePayload(user);
   for (const matchmakerId of user.matchmakerIds) {
     const currentProfile = user.profileByMatchmaker[matchmakerId] || {};
@@ -1755,7 +1842,7 @@ app.patch("/api/client/profile", requireAuth(["client"]), async (request, respon
       updatedAt: new Date().toISOString(),
     };
   }
-  
+
   await pool.query(
     `update users set name = $1, gender = $2, age = $3, city = $4, job = $5, wechat = $6, raw = $7, updated_at = now() where id = $8`,
     [user.name, user.gender, user.age, user.city, user.job, user.wechat, JSON.stringify(user), userId]
@@ -2115,13 +2202,17 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
       return response.status(429).json({ error: "weekly_match_quota_exhausted", message: `${requestedPlan.name}本周期推荐额度已用完` });
     }
 
+    // 反向也视为重复：A→B 和 B→A 不能同时存在未完成的牵线
     const duplicateRes = await client.query(
-      "select 1 from match_requests where from_user_id = $1 and to_user_id = $2 and matchmaker_id = $3 and status != '已完成'",
-      [userId, targetUserId, matchmakerId],
+      `select 1 from match_requests
+       where matchmaker_id = $1 and status not in ('已完成', '已拒绝')
+       and ((from_user_id = $2 and to_user_id = $3) or (from_user_id = $3 and to_user_id = $2))
+       limit 1`,
+      [matchmakerId, userId, targetUserId],
     );
     if (duplicateRes.rows.length > 0) {
       await client.query("rollback");
-      return response.status(409).json({ error: "request_pending" });
+      return response.status(409).json({ error: "request_pending", message: "你们已有进行中的牵线申请" });
     }
 
     const reqId = `r${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`;
@@ -2401,11 +2492,16 @@ app.patch("/api/matchmaker/requests/:id/service-progress", requireAuth(["matchma
         await client.query("rollback");
         return response.status(409).json({ error: "service_plan_not_found" });
       }
+      // not_fit 作为终态：不再允许原地复活为 effective_match。
+      // 如果红娘误判，由客户重新发起牵线（这也是更合理的流程）。
       req.serviceStage = "不合适，等待重新匹配";
       req.matchOutcome = "not_fit";
+      req.status = "已拒绝";
       if (!req.matchCreditReturned) {
         servicePlan.weeklyMatchUsed = Math.max(0, Number(servicePlan.weeklyMatchUsed || 0) - 1);
         servicePlan.totalMatchUsed = Math.max(0, Number(servicePlan.totalMatchUsed || 0) - 1);
+        // 同时回退跟进额度，避免 weeklyFollowupUsed 残留
+        servicePlan.weeklyFollowupUsed = Math.max(0, Number(servicePlan.weeklyFollowupUsed || 0) - Number(req.followupCount || 0));
         req.matchCreditReturned = true;
       }
     } else {
@@ -2414,7 +2510,7 @@ app.patch("/api/matchmaker/requests/:id/service-progress", requireAuth(["matchma
     }
 
     await client.query("update users set raw = $1, updated_at = now() where id = $2", [JSON.stringify(customer), customer.id]);
-    await client.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
+    await client.query("update match_requests set status = $1, raw = $2, updated_at = now() where id = $3", [req.status, JSON.stringify(req), requestId]);
     await client.query("commit");
     response.json({ request: req, state: publicState(await readState()) });
   } catch (err) {

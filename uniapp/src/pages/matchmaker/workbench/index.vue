@@ -99,6 +99,7 @@ const userStore = useUserStore();
 const appStore = useAppStore();
 
 const mmId = computed(() => userStore.matchmakerId);
+const actionLoading = ref(false);
 
 onShow(() => {
   loadData();
@@ -229,27 +230,39 @@ const contactSide = (requestId, side) => {
 };
 
 const toggleMemberChat = async (requestId, enabled) => {
+  if (actionLoading.value) return;
+  actionLoading.value = true;
   try {
     await toggleMemberChatApi(requestId, enabled);
     await appStore.fetchState();
     uni.showToast({ title: enabled ? '已开启男女双方私聊' : '已关闭男女双方私聊', icon: 'none' });
-  } catch (error) {}
+  } catch (error) {} finally {
+    actionLoading.value = false;
+  }
 };
 
 const updateProgress = async (requestId, action) => {
+  if (actionLoading.value) return;
+  actionLoading.value = true;
   try {
     await updateServiceProgressApi(requestId, action);
     await appStore.fetchState();
     uni.showToast({ title: '服务进度已更新', icon: 'none' });
-  } catch (error) {}
+  } catch (error) {} finally {
+    actionLoading.value = false;
+  }
 };
 
 const reviewProfile = async (userId, action) => {
+  if (actionLoading.value) return;
+  actionLoading.value = true;
   try {
     await reviewProfileApi(userId, action);
     await appStore.fetchState();
     uni.showToast({ title: action === 'approve' ? '资料已审核通过' : '资料已退回修改', icon: 'none' });
-  } catch (error) {}
+  } catch (error) {} finally {
+    actionLoading.value = false;
+  }
 };
 
 const openChat = (threadId) => {

@@ -31,12 +31,13 @@
       <text class="section-title">购买/兑换服务包</text>
       <text class="service-copy">¥399 / 30 天；首次推荐有明确时限，不合适可申请重新匹配。</text>
       <picker mode="selector" :range="planLabels" :value="selectedPlanIndex" @change="handlePlanChange">
-        <view class="plan-picker">{{ planLabels[selectedPlanIndex] }}</view>
+        <view class="plan-picker" :class="{ 'picker-disabled': promoCode }">{{ planLabels[selectedPlanIndex] }}</view>
       </picker>
+      <text v-if="promoCode" class="hint-text">已填写兑换码，将以兑换码绑定的套餐为准，套餐选择将被忽略</text>
       <view class="input-group">
-        <input class="code-input" v-model="promoCode" placeholder="请输入兑换码" />
-        <button class="btn-redeem" @click="handleRedeem" :class="{ disabled: loading || !promoCode }">
-          {{ loading ? '兑换中' : '立即兑换' }}
+        <input class="code-input" v-model="promoCode" placeholder="请输入兑换码（不填则按上方套餐购买）" />
+        <button class="btn-redeem" @click="handleRedeem" :class="{ disabled: loading }">
+          {{ loading ? '兑换中' : (promoCode ? '立即兑换' : '立即购买') }}
         </button>
       </view>
     </view>
@@ -185,6 +186,18 @@ const handlePlanChange = (event) => {
     border-radius: $radius-md;
     color: $color-ink;
     background: $color-paper;
+
+    &.picker-disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+  }
+
+  .hint-text {
+    display: block;
+    margin: -8rpx 0 $spacing-md;
+    color: $color-gold;
+    font-size: $font-sm;
   }
   
   .section-title {

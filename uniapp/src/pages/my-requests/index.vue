@@ -30,12 +30,13 @@
           </view>
           <text class="service-stage">服务进度：{{ item.serviceStage || '待首次推荐' }} · 已跟进 {{ item.followupCount || 0 }} 次</text>
             <button
-              v-if="item.matchOutcome !== 'stable_progress'"
-            class="outcome-btn"
-            @click.stop="confirmStable(item)"
-          >确认双方稳定发展</button>
-          <text v-else class="confirmed-text">✓ 你已确认双方稳定发展，红娘获得成功服务奖励</text>
-          <button v-if="!item.customerRating && item.status === '已完成'" class="outcome-btn" @click.stop="rateService(item)">评价红娘服务</button>
+              v-if="!item.matchOutcome && item.status !== '已完成' && item.status !== '已拒绝'"
+              class="outcome-btn"
+              :disabled="actionLoading"
+              @click.stop="confirmStable(item)"
+            >确认双方稳定发展</button>
+            <text v-else-if="item.matchOutcome === 'stable_progress'" class="confirmed-text">✓ 你已确认双方稳定发展，红娘获得成功服务奖励</text>
+          <button v-if="!item.customerRating && item.status === '已完成'" class="outcome-btn" :disabled="actionLoading" @click.stop="rateService(item)">评价红娘服务</button>
           <text v-else-if="item.customerRating" class="confirmed-text">服务评分：{{ '★'.repeat(item.customerRating) }}{{ '☆'.repeat(5 - item.customerRating) }}</text>
         </view>
       </view>
@@ -57,6 +58,7 @@ import { onShow } from '@dcloudio/uni-app';
 const list = ref([]);
 const threads = ref([]);
 const loading = ref(true);
+const actionLoading = ref(false);
 const memberChatRequestText = '我想申请开通和对方的聊天权限，请红娘审核。';
 
 const loadData = async () => {
@@ -135,6 +137,8 @@ const applyMemberChat = (item) => {
 };
 
 const confirmStable = async (item) => {
+  if (actionLoading.value) return;
+  actionLoading.value = true;
   try {
     await confirmMatchOutcomeApi(item.id);
     item.matchOutcome = 'stable_progress';
@@ -143,10 +147,13 @@ const confirmStable = async (item) => {
     uni.showToast({ title: '已确认，感谢反馈', icon: 'success' });
   } catch (error) {
     // request interceptor handles toast
+  } finally {
+    actionLoading.value = false;
   }
 };
 
 const rateService = async (item) => {
+  if (actionLoading.value) return;
   const rating = Number(await new Promise((resolve) => {
     uni.showModal({ title: '评价红娘服务', editable: true, placeholderText: '请输入1-5分', success: (result) => resolve(result.confirm ? result.content : '') });
   }));
@@ -154,12 +161,15 @@ const rateService = async (item) => {
     uni.showToast({ title: '请输入1-5分', icon: 'none' });
     return;
   }
+  actionLoading.value = true;
   try {
     await rateMatchmakerApi(item.id, rating);
     item.customerRating = rating;
     uni.showToast({ title: '评价成功', icon: 'success' });
   } catch (error) {
     // request interceptor handles toast
+  } finally {
+    actionLoading.value = false;
   }
 };
 </script>
