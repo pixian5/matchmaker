@@ -122,10 +122,11 @@ const pendingProfiles = computed(() => appStore.pendingProfilesForMatchmaker(mmI
 // 当前红娘的聊天会话
 const threads = computed(() => appStore.threadsForMatchmaker(mmId.value));
 
-// 通知列表合并请求和资料审核
+// 通知列表合并请求和资料审核（已完成/已拒绝的订单不进入待办）
 const notificationList = computed(() => {
   const list = [];
   requests.value.forEach((request) => {
+    if (['已完成', '已拒绝'].includes(request.status)) return;
     const from = appStore.getUserById(request.fromUserId);
     const to = appStore.getUserById(request.toUserId);
     list.push({

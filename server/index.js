@@ -546,6 +546,32 @@ async function initDatabase() {
       raw jsonb not null
     )
   `);
+  // 业务唯一性必须由数据库兜底，不能只依赖应用层“先查再写”。
+  await pool.query("create unique index if not exists users_phone_unique on users (phone) where phone is not null and phone <> ''");
+  await pool.query("create unique index if not exists users_email_unique on users (lower(email)) where email is not null and email <> ''");
+  await pool.query("create unique index if not exists matchmakers_phone_unique on matchmakers (phone) where phone is not null and phone <> ''");
+  await pool.query("create unique index if not exists matchmakers_email_unique on matchmakers (lower(email)) where email is not null and email <> ''");
+  await pool.query(`
+    create unique index if not exists chat_threads_request_singleton_unique
+    on chat_threads (request_id, type)
+    where request_id is not null and type in ('member_member', 'matchmaker_group')
+  `);
+  // member_matchmaker 一个 request 有男/女两条线程，按 (request_id, client_id) 去重
+  await pool.query(`
+    create unique index if not exists chat_threads_mm_client_unique
+    on chat_threads (request_id, (participants -> 1 ->> 'id'))
+    where request_id is not null and type = 'member_matchmaker'
+  `);
+  await pool.query(`
+    create unique index if not exists chat_messages_thread_seq_unique
+    on chat_messages (thread_id, ((raw->>'seq')::int))
+    where thread_id is not null and raw ? 'seq'
+  `);
+  await pool.query(`
+    create unique index if not exists chat_messages_client_msg_unique
+    on chat_messages (thread_id, (raw->>'clientMsgNo'))
+    where thread_id is not null and nullif(raw->>'clientMsgNo', '') is not null
+  `);
   const userCountRes = await pool.query("select count(*) from users");
   const count = Number(userCountRes.rows[0].count);
   if (count === 0) {
@@ -700,8 +726,13 @@ function buildMatchmakerProfilePayload(user) {
   };
 }
 
-function applyPublishedProfile(user) {
-  const matchmakerId = user.matchmakerIds?.[0] || null;
+function getSharedMatchmakerId(viewer, target) {
+  const viewerIds = new Set(getServiceMatchmakerIds(viewer));
+  return (target.matchmakerIds || []).find((id) => viewerIds.has(id)) || null;
+}
+
+function applyPublishedProfile(user, matchmakerId = null) {
+  matchmakerId ||= user.matchmakerIds?.[0] || null;
   const published = matchmakerId ? user.profileByMatchmaker?.[matchmakerId]?.published : null;
   return published ? { ...user, ...published } : { ...user };
 }
@@ -725,6 +756,25 @@ function getRequestContactStatus(request) {
   if (request.maleContacted) return "联系男方";
   if (request.femaleContacted) return "联系女方";
   return "待红娘联系";
+}
+
+function isRequestTerminal(request) {
+  return ["已完成", "已拒绝"].includes(request?.status);
+}
+
+function rejectTerminalRequest(request, response) {
+  if (!isRequestTerminal(request)) return false;
+  response.status(409).json({ error: "request_completed", message: "该牵线服务已结束，不能继续修改" });
+  return true;
+}
+
+function normalizeClientMessageTime(value, now = new Date()) {
+  if (!value) return now.toISOString();
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return now.toISOString();
+  const maxClockSkewMs = 5 * 60 * 1000;
+  if (Math.abs(parsed.getTime() - now.getTime()) > maxClockSkewMs) return now.toISOString();
+  return parsed.toISOString();
 }
 
 function isGroupChatAllowed(request) {
@@ -833,7 +883,7 @@ function buildMemberMatchmakerThreads(request, fromUser, toUser) {
 
 function buildMemberMemberThread(request) {
   return ensureThreadDefaults({
-    id: `ct${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`,
+    id: `ct_gen_${request.id}_peer`,
     type: "member_member",
     requestId: request.id,
     status: "active",
@@ -1440,25 +1490,17 @@ app.post("/api/auth/matchmaker/login", async (request, response) => {
 
 app.post("/api/auth/client/register", async (request, response) => {
   const input = request.body || {};
-  const state = await readState();
   const phone = normalizePhone(input.phone);
   const email = normalizeEmail(input.email);
   if (!phone && !email) {
     response.status(400).json({ error: "phone_or_email_required" });
     return;
   }
-  if (phone && state.users.some((user) => user.phone === phone)) {
-    response.status(409).json({ error: "phone_exists" });
-    return;
-  }
-  if (email && state.users.some((user) => normalizeEmail(user.email) === email)) {
-    response.status(409).json({ error: "email_exists" });
-    return;
-  }
-
-  const allMatchmakerIds = (state.matchmakers || []).map((matchmaker) => matchmaker.id).filter(Boolean);
+  const matchmakerRes = await pool.query("select id from matchmakers order by id");
+  const allMatchmakerIds = matchmakerRes.rows.map((item) => item.id);
+  const validMatchmakerIds = new Set(allMatchmakerIds);
   const matchmakerIds = Array.isArray(input.matchmakerIds) && input.matchmakerIds.length
-    ? input.matchmakerIds
+    ? [...new Set(input.matchmakerIds.filter((id) => validMatchmakerIds.has(id)))]
     : allMatchmakerIds;
 
   const user = {
@@ -1484,18 +1526,37 @@ app.post("/api/auth/client/register", async (request, response) => {
     requirements: String(input.requirements || "").trim(),
     photo: input.photo || null,
   };
-  state.users.push(user);
-  await writeState(state);
-  response.status(201).json({
-    token: signToken({ role: "client", sub: user.id }),
-    user: publicState({ ...state, users: [user] }).users[0],
-    state: publicState(await readState()),
-  });
+  try {
+    await pool.query(
+      `insert into users (
+         id, name, gender, age, city, job, wechat, phone, email, vip,
+         password_hash, account_status, registered_at, real_name_verified, raw
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, $10, $11, $12, false, $13::jsonb)`,
+      [
+        user.id, user.name, user.gender, user.age, user.city, user.job, user.wechat,
+        user.phone, user.email, user.passwordHash, user.accountStatus, user.registeredAt,
+        JSON.stringify(user),
+      ],
+    );
+    invalidateStateCache();
+    const state = await readState();
+    response.status(201).json({
+      token: signToken({ role: "client", sub: user.id }),
+      user: publicState({ ...state, users: [user] }).users[0],
+      state: publicState(state),
+    });
+  } catch (error) {
+    if (error?.code === "23505") {
+      const duplicate = error.constraint === "users_phone_unique" ? "phone_exists" : "email_exists";
+      return response.status(409).json({ error: duplicate });
+    }
+    console.error("会员注册失败:", error);
+    response.status(500).json({ error: "registration_failed" });
+  }
 });
 
 app.post("/api/auth/matchmaker/register", async (request, response) => {
   const input = request.body || {};
-  const state = await readState();
   const phone = normalizePhone(input.phone);
   const email = normalizeEmail(input.email);
   const code = String(input.code || "").trim().toUpperCase();
@@ -1503,19 +1564,6 @@ app.post("/api/auth/matchmaker/register", async (request, response) => {
     response.status(400).json({ error: "phone_and_code_required" });
     return;
   }
-  if (state.matchmakers.some((matchmaker) => matchmaker.code?.toUpperCase() === code)) {
-    response.status(409).json({ error: "code_exists" });
-    return;
-  }
-  if (state.matchmakers.some((matchmaker) => matchmaker.phone === phone)) {
-    response.status(409).json({ error: "phone_exists" });
-    return;
-  }
-  if (email && state.matchmakers.some((matchmaker) => normalizeEmail(matchmaker.email) === email)) {
-    response.status(409).json({ error: "email_exists" });
-    return;
-  }
-
   const matchmaker = {
     id: `m${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`,
     name: String(input.name || "").trim(),
@@ -1527,13 +1575,37 @@ app.post("/api/auth/matchmaker/register", async (request, response) => {
     status: "active",
     registeredAt: new Date().toISOString(),
   };
-  state.matchmakers.push(matchmaker);
-  await writeState(state);
-  response.status(201).json({
-    token: signToken({ role: "matchmaker", sub: matchmaker.id }),
-    matchmaker: publicState({ ...state, matchmakers: [matchmaker] }).matchmakers[0],
-    state: publicState(await readState()),
-  });
+  try {
+    await pool.query(
+      `insert into matchmakers (
+         id, agency_id, name, code, phone, email, status, password_hash, registered_at, raw
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
+      [
+        matchmaker.id, matchmaker.agencyId, matchmaker.name, matchmaker.code,
+        matchmaker.phone, matchmaker.email, matchmaker.status, matchmaker.passwordHash,
+        matchmaker.registeredAt, JSON.stringify(matchmaker),
+      ],
+    );
+    invalidateStateCache();
+    const state = await readState();
+    response.status(201).json({
+      token: signToken({ role: "matchmaker", sub: matchmaker.id }),
+      matchmaker: publicState({ ...state, matchmakers: [matchmaker] }).matchmakers[0],
+      state: publicState(state),
+    });
+  } catch (error) {
+    if (error?.code === "23505") {
+      const duplicate = error.constraint === "matchmakers_phone_unique"
+        ? "phone_exists"
+        : error.constraint === "matchmakers_email_unique"
+          ? "email_exists"
+          : "code_exists";
+      return response.status(409).json({ error: duplicate });
+    }
+    if (error?.code === "23503") return response.status(400).json({ error: "agency_not_found" });
+    console.error("红娘注册失败:", error);
+    response.status(500).json({ error: "registration_failed" });
+  }
 });
 
 app.get("/api/state", async (_request, response) => {
@@ -1562,7 +1634,7 @@ app.post("/api/reset", requireAuth(["admin"]), async (_request, response) => {
 // 1. 客户：修改个人资料
 app.patch("/api/client/profile", requireAuth(["client"]), async (request, response) => {
   const userId = request.user.sub;
-  const { name, gender, age, city, job, wechat, bio, requirements, photo, avatar, matchmakerIds, syncAllMatchmakers } = request.body || {};
+  const { name, gender, age, city, job, wechat, bio, requirements, photo, avatar } = request.body || {};
   
   const userRes = await pool.query("select raw from users where id = $1", [userId]);
   if (userRes.rows.length === 0) return response.status(404).json({ error: "user_not_found" });
@@ -1579,11 +1651,6 @@ app.patch("/api/client/profile", requireAuth(["client"]), async (request, respon
   user.requirements = requirements !== undefined ? requirements.trim() : user.requirements;
   user.photo = photo !== undefined ? String(photo).trim() : avatar !== undefined ? String(avatar).trim() : user.photo;
   
-  const selectedMatchmakerIds = syncAllMatchmakers
-    ? user.matchmakerIds
-    : (Array.isArray(matchmakerIds) ? matchmakerIds : user.matchmakerIds);
-  user.matchmakerIds = selectedMatchmakerIds.filter(Boolean);
-
   const profilePayload = buildMatchmakerProfilePayload(user);
   for (const matchmakerId of user.matchmakerIds) {
     const currentProfile = user.profileByMatchmaker[matchmakerId] || {};
@@ -1793,7 +1860,7 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
   try {
     await client.query("begin");
     
-    const userRes = await client.query("select raw from users where id = $1", [userId]);
+    const userRes = await client.query("select raw from users where id = $1 for update", [userId]);
     if (userRes.rows.length === 0) {
       await client.query("rollback");
       return response.status(404).json({ error: "user_not_found" });
@@ -1801,7 +1868,7 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
     const user = ensureUserDefaults(userRes.rows[0].raw);
 
     let matchmakerId = null;
-    let selectedPlanId = SERVICE_PLANS[planId] ? planId : "monthly";
+    let selectedPlanId = "monthly";
 
     if (code) {
       // 兑换码核销
@@ -1830,7 +1897,8 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
       if (promo.matchmakerId) {
         matchmakerId = promo.matchmakerId;
       }
-      if (promo.planId && SERVICE_PLANS[promo.planId]) selectedPlanId = promo.planId;
+      // 兑换码的权益由后台签发时确定，不能由客户端自行升级套餐。
+      selectedPlanId = promo.planId && SERVICE_PLANS[promo.planId] ? promo.planId : "monthly";
     } else if (referralCode) {
       // 推荐码支付
       const mmRes = await client.query("select id from matchmakers where upper(code) = upper($1)", [referralCode.trim()]);
@@ -1839,6 +1907,7 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
         return response.status(404).json({ error: "invalid_referral_code" });
       }
       matchmakerId = mmRes.rows[0].id;
+      selectedPlanId = SERVICE_PLANS[planId] ? planId : "monthly";
     } else {
       await client.query("rollback");
       return response.status(400).json({ error: "code_or_referral_code_required" });
@@ -1864,7 +1933,10 @@ app.post("/api/client/vip/redeem", requireAuth(["client"]), async (request, resp
       ? user.servicePlans.map((plan) => plan.subscriptionId === currentPlan.subscriptionId ? newPlan : plan)
       : [...user.servicePlans, newPlan];
     user.servicePlan = newPlan;
-    user.vipExpiresAt = user.servicePlan.expiresAt.slice(0, 10);
+    user.vipExpiresAt = user.servicePlans
+      .filter((plan) => plan.status === "active" && new Date(plan.expiresAt) > new Date())
+      .reduce((latest, plan) => new Date(plan.expiresAt) > new Date(latest) ? plan.expiresAt : latest, newPlan.expiresAt)
+      .slice(0, 10);
     if (matchmakerId) upsertUserVipMatchmaker(user, matchmakerId);
     await client.query(
       "update users set vip = true, raw = $1, updated_at = now() where id = $2",
@@ -1990,7 +2062,8 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     for (const thread of [...mmThreads, groupThread]) {
       await client.query(
         `insert into chat_threads (id, type, request_id, status, participants, raw)
-         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
+         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+         on conflict do nothing`,
         [thread.id, thread.type, thread.requestId, thread.status, JSON.stringify(thread.participants), JSON.stringify(thread)],
       );
     }
@@ -2033,6 +2106,7 @@ app.patch("/api/matchmaker/requests/:id/contacted", requireAuth(["matchmaker"]),
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
 
   if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
+  if (rejectTerminalRequest(req, response)) return;
 
   if (side === "male") req.maleContacted = true;
   if (side === "female") req.femaleContacted = true;
@@ -2061,6 +2135,7 @@ app.patch("/api/matchmaker/requests/:id/approve-member-chat", requireAuth(["matc
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
+  if (rejectTerminalRequest(req, response)) return;
   req.memberChatEnabled = true;
   await pool.query(
     "update match_requests set raw = $1, updated_at = now() where id = $2",
@@ -2075,7 +2150,8 @@ app.patch("/api/matchmaker/requests/:id/approve-member-chat", requireAuth(["matc
     const memberThread = buildMemberMemberThread(req);
     await pool.query(
       `insert into chat_threads (id, type, request_id, status, participants, raw)
-       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
+       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+       on conflict do nothing`,
       [
         memberThread.id,
         memberThread.type,
@@ -2120,6 +2196,7 @@ app.patch("/api/matchmaker/requests/:id/member-chat", requireAuth(["matchmaker"]
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
+  if (rejectTerminalRequest(req, response)) return;
 
   req.memberChatEnabled = enabled;
   await pool.query(
@@ -2136,7 +2213,8 @@ app.patch("/api/matchmaker/requests/:id/member-chat", requireAuth(["matchmaker"]
       const memberThread = buildMemberMemberThread(req);
       await pool.query(
         `insert into chat_threads (id, type, request_id, status, participants, raw)
-         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
+         values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+         on conflict do nothing`,
         [memberThread.id, memberThread.type, memberThread.requestId, memberThread.status, JSON.stringify(memberThread.participants), JSON.stringify(memberThread)]
       );
     }
@@ -2168,6 +2246,7 @@ app.patch("/api/matchmaker/requests/:id/service-progress", requireAuth(["matchma
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
+  if (rejectTerminalRequest(req, response)) return;
 
   const fromRes = await pool.query("select raw from users where id = $1", [req.fromUserId]);
   const customer = fromRes.rows[0] ? ensureUserDefaults(fromRes.rows[0].raw) : null;
@@ -2184,6 +2263,9 @@ app.patch("/api/matchmaker/requests/:id/service-progress", requireAuth(["matchma
     req.serviceStage = "红娘持续跟进中";
     req.rewardLedger.followup = 0;
   } else if (action === "effective_match") {
+    if (!req.maleContacted || !req.femaleContacted) {
+      return response.status(409).json({ error: "both_sides_not_contacted", message: "请先分别联系男女双方" });
+    }
     req.serviceStage = "已完成有效匹配";
     req.matchOutcome = "effective";
     req.rewardLedger.effectiveMatch = 0;
@@ -2214,6 +2296,10 @@ app.patch("/api/client/match-requests/:id/outcome", requireAuth(["client"]), asy
   if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
   const req = ensureRequestDefaults(reqRes.rows[0].raw);
   if (req.fromUserId !== request.user.sub) return response.status(403).json({ error: "forbidden" });
+  if (rejectTerminalRequest(req, response)) return;
+  if (req.matchOutcome !== "effective" || !req.maleContacted || !req.femaleContacted) {
+    return response.status(409).json({ error: "effective_match_required", message: "红娘确认有效匹配后才能确认稳定发展" });
+  }
   const customerRes = await pool.query("select raw from users where id = $1", [req.fromUserId]);
   const customer = customerRes.rows[0] ? ensureUserDefaults(customerRes.rows[0].raw) : null;
   const servicePlan = customer?.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer?.servicePlan;
@@ -2258,7 +2344,7 @@ app.patch("/api/client/match-requests/:id/rating", requireAuth(["client"]), asyn
 app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"]), async (request, response) => {
   const threadId = request.params.id;
   const content = String(request.body?.content || "").trim();
-  const clientMsgNo = request.body?.clientMsgNo || null;
+  const clientMsgNo = String(request.body?.clientMsgNo || "").trim().slice(0, 120) || null;
   const clientSeq = Number.isInteger(request.body?.clientSeq) ? request.body.clientSeq : null;
   const deviceId = String(request.body?.deviceId || "").trim() || null;
   const clientCreatedAt = request.body?.createdAt || null;
@@ -2280,9 +2366,15 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
   }
 
   // 检查发送者是否被拉黑
+  const peerIds = (thread.participants || [])
+    .filter((participant) => participant.id !== request.user.sub)
+    .map((participant) => participant.id);
   const blockedRes = await pool.query(
-    "select raw from blocks where (blocker_id = $1 and blocked_id = $2) or (blocker_id = $2 and blocked_id = $1) limit 1",
-    [request.user.sub, thread.participants.find(p => p.id !== request.user.sub)?.id || ""]
+    `select raw from blocks
+     where (blocker_id = $1 and blocked_id = any($2::text[]))
+        or (blocked_id = $1 and blocker_id = any($2::text[]))
+     limit 1`,
+    [request.user.sub, peerIds]
   );
   if (blockedRes.rows.length > 0) {
     return response.status(403).json({ error: "blocked_by_peer", message: "对方已拉黑你，无法发送消息" });
@@ -2293,6 +2385,18 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     await client.query("BEGIN");
     // 先锁住线程行，确保同一线程的消息插入串行化，避免新线程（无消息）时seq重复
     await client.query("select id from chat_threads where id = $1 for update", [threadId]);
+
+    if (clientMsgNo) {
+      const existingRes = await client.query(
+        "select raw from chat_messages where thread_id = $1 and raw->>'clientMsgNo' = $2 limit 1",
+        [threadId, clientMsgNo],
+      );
+      if (existingRes.rows[0]) {
+        await client.query("COMMIT");
+        client.release();
+        return response.json({ message: existingRes.rows[0].raw, thread, deduplicated: true });
+      }
+    }
     
     const seqRes = await client.query(
       "select coalesce(max((raw->>'seq')::int), 0) as max_seq from chat_messages where thread_id = $1",
@@ -2300,6 +2404,7 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     );
     const nextSeq = (seqRes.rows[0]?.max_seq || 0) + 1;
     
+    const serverNow = new Date();
     const message = {
       id: `cm${Date.now().toString(36)}${crypto.randomBytes(2).toString("hex")}`,
       threadId,
@@ -2307,8 +2412,9 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
       senderRole: request.user.role,
       senderId: request.user.sub,
       content: maskedContent,
-      createdAt: clientCreatedAt || new Date().toISOString(),
+      createdAt: normalizeClientMessageTime(clientCreatedAt, serverNow),
     };
+    if (clientCreatedAt) message.clientCreatedAt = String(clientCreatedAt);
     if (sensitiveFound.length > 0) {
       message.sensitiveWords = sensitiveFound;
       message.originalContentMasked = true;
@@ -2322,7 +2428,10 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
     if (deviceId) {
       message.deviceId = deviceId;
     }
-    thread.lastMessageAt = message.createdAt;
+    const previousLastMessageAt = thread.lastMessageAt ? new Date(thread.lastMessageAt) : null;
+    thread.lastMessageAt = previousLastMessageAt && previousLastMessageAt > new Date(message.createdAt)
+      ? previousLastMessageAt.toISOString()
+      : message.createdAt;
     thread.lastMessagePreview = maskedContent.slice(0, 80);
   
     await client.query(
@@ -2333,6 +2442,36 @@ app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"])
       "update chat_threads set raw = $1, updated_at = now() where id = $2",
       [JSON.stringify(thread), threadId]
     );
+
+    // 红娘真正发出消息时才记为"已联系"，避免仅打开会话就推进业务状态。
+    // 一对一私聊标记对应性别；三方群聊同时标记男女双方。
+    if (request.user.role === "matchmaker" && thread.requestId
+        && (thread.type === "member_matchmaker" || thread.type === "matchmaker_group")) {
+      const requestRes = await client.query("select raw from match_requests where id = $1 for update", [thread.requestId]);
+      if (requestRes.rows[0]) {
+        const matchRequest = ensureRequestDefaults(requestRes.rows[0].raw);
+        if (!isRequestTerminal(matchRequest)) {
+          const clientIds = (thread.participants || [])
+            .filter((participant) => participant.role === "client")
+            .map((participant) => participant.id);
+          if (clientIds.length > 0) {
+            const clientsRes = await client.query(
+              "select gender from users where id = any($1::text[]) and gender is not null",
+              [clientIds]
+            );
+            for (const row of clientsRes.rows) {
+              if (row.gender === "男") matchRequest.maleContacted = true;
+              if (row.gender === "女") matchRequest.femaleContacted = true;
+            }
+            matchRequest.status = getRequestContactStatus(matchRequest);
+            await client.query(
+              "update match_requests set status = $1, raw = $2, updated_at = now() where id = $3",
+              [matchRequest.status, JSON.stringify(matchRequest), matchRequest.id],
+            );
+          }
+        }
+      }
+    }
     
     await client.query("COMMIT");
     client.release();
@@ -2491,7 +2630,11 @@ app.post("/api/admin/matchmakers", requireAuth(["admin"]), async (request, respo
 // 8. 管理员：修改分成比例
 app.patch("/api/admin/splits", requireAuth(["admin"]), async (request, response) => {
   const { promo, matchmaker, platform } = request.body || {};
-  if (Number(promo) + Number(matchmaker) + Number(platform) !== 100) {
+  const values = [promo, matchmaker, platform].map(Number);
+  if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 100)) {
+    return response.status(400).json({ error: "split_out_of_range", message: "分成比例必须在 0 到 100 之间" });
+  }
+  if (values[0] + values[1] + values[2] !== 100) {
     return response.status(400).json({ error: "sum_must_be_100" });
   }
 
@@ -2508,8 +2651,9 @@ app.patch("/api/admin/splits", requireAuth(["admin"]), async (request, response)
 
 // 9. 管理员：随机生成卡密
 app.post("/api/admin/promo-codes", requireAuth(["admin"]), async (request, response) => {
-  const { code, matchmakerId } = request.body || {};
+  const { code, matchmakerId, planId = "monthly" } = request.body || {};
   if (!code) return response.status(400).json({ error: "code_required" });
+  if (!SERVICE_PLANS[planId]) return response.status(400).json({ error: "invalid_plan" });
 
   const codeUpper = code.trim().toUpperCase();
   const codeCheck = await pool.query("select 1 from promo_codes where upper(code) = $1", [codeUpper]);
@@ -2518,6 +2662,7 @@ app.post("/api/admin/promo-codes", requireAuth(["admin"]), async (request, respo
   const promoCode = {
     code: codeUpper,
     matchmakerId: matchmakerId || null,
+    planId,
     used: false,
     usedBy: null
   };

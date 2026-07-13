@@ -59,8 +59,16 @@ const plans = [
 ];
 const selectedPlanIndex = ref(2);
 const planLabels = plans.map((item) => item.label);
-const matchRemaining = computed(() => Math.max(0, Number(userStore.servicePlan?.weeklyMatchLimit || 5) - Number(userStore.servicePlan?.weeklyMatchUsed || 0)));
-const followupRemaining = computed(() => Math.max(0, Number(userStore.servicePlan?.weeklyFollowupLimit || 5) - Number(userStore.servicePlan?.weeklyFollowupUsed || 0)));
+const matchRemaining = computed(() => {
+  const limit = userStore.servicePlan?.weeklyMatchLimit;
+  if (limit === null || limit === undefined) return '无限';
+  return Math.max(0, Number(limit) - Number(userStore.servicePlan?.weeklyMatchUsed || 0));
+});
+const followupRemaining = computed(() => {
+  const limit = userStore.servicePlan?.weeklyFollowupLimit;
+  if (limit === null || limit === undefined) return '无限';
+  return Math.max(0, Number(limit) - Number(userStore.servicePlan?.weeklyFollowupUsed || 0));
+});
 
 const formatDate = (dateStr) => {
   if (!dateStr) return '';

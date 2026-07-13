@@ -35,8 +35,8 @@
             @click.stop="confirmStable(item)"
           >确认双方稳定发展</button>
           <text v-else class="confirmed-text">✓ 你已确认双方稳定发展，红娘获得成功服务奖励</text>
-          <button v-if="!item.customerRating" class="outcome-btn" @click.stop="rateService(item)">评价红娘服务</button>
-          <text v-else class="confirmed-text">服务评分：{{ '★'.repeat(item.customerRating) }}{{ '☆'.repeat(5 - item.customerRating) }}</text>
+          <button v-if="!item.customerRating && item.status === '已完成'" class="outcome-btn" @click.stop="rateService(item)">评价红娘服务</button>
+          <text v-else-if="item.customerRating" class="confirmed-text">服务评分：{{ '★'.repeat(item.customerRating) }}{{ '☆'.repeat(5 - item.customerRating) }}</text>
         </view>
       </view>
       

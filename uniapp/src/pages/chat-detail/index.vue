@@ -160,16 +160,17 @@ const syncLatestMessages = async (force = false) => {
 };
 
 const compareMessages = (a, b) => {
-  // 同一发送者 + 同一设备：按客户端序号排序（保证用户视角的发送顺序）
+  // 主排序键：createdAt（服务端已限幅 5 分钟，跨设备时间偏差可控）
+  const timeA = new Date(a.createdAt).getTime();
+  const timeB = new Date(b.createdAt).getTime();
+  if (timeA !== timeB) return timeA - timeB;
+  // 同时间才用 clientSeq 打破平局，保证传递性（仅在同一发送者+设备时有效）
   if (a.senderRole === b.senderRole && a.senderId === b.senderId
       && a.deviceId && a.deviceId === b.deviceId
       && a.clientSeq != null && b.clientSeq != null) {
     return a.clientSeq - b.clientSeq;
   }
-  // 跨设备或不同发送者：按客户端创建时间排序（保证真实发送顺序）
-  const timeDiff = new Date(a.createdAt) - new Date(b.createdAt);
-  if (timeDiff !== 0) return timeDiff;
-  // 同秒消息：按消息ID排序（保证稳定排序）
+  // 仍然并列时用 id 做稳定排序
   return a.id.localeCompare(b.id);
 };
 
