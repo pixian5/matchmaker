@@ -6,8 +6,32 @@ import { WebSocketServer } from "ws";
 
 const { Pool } = pg;
 const PORT = Number(process.env.PORT || 3000);
-const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_TOKEN || "matchmaker-dev-secret-change-me";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin";
+const TOKEN_SECRET = process.env.JWT_SECRET || process.env.ADMIN_API_TOKEN || "";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const INSECURE_DEFAULT_SECRET = "matchmaker-dev-secret-change-me";
+const FALLBACK_TOKEN_SECRET = INSECURE_DEFAULT_SECRET;
+const FALLBACK_ADMIN_PASSWORD = "admin";
+
+function assertProductionSecrets() {
+  // 生产环境必须显式配置 JWT_SECRET 和 ADMIN_PASSWORD，禁止使用源码默认值。
+  if (process.env.NODE_ENV !== "production") return;
+  if (!TOKEN_SECRET || TOKEN_SECRET === INSECURE_DEFAULT_SECRET) {
+    throw new Error("生产环境必须设置 JWT_SECRET 环境变量且不能使用默认值");
+  }
+  if (TOKEN_SECRET.length < 16) {
+    throw new Error("生产环境 JWT_SECRET 长度必须 >= 16");
+  }
+  if (!ADMIN_PASSWORD || ADMIN_PASSWORD === FALLBACK_ADMIN_PASSWORD) {
+    throw new Error("生产环境必须设置 ADMIN_PASSWORD 环境变量且不能使用默认值 admin");
+  }
+  if (ADMIN_PASSWORD.length < 8) {
+    throw new Error("生产环境 ADMIN_PASSWORD 长度必须 >= 8");
+  }
+}
+
+assertProductionSecrets();
+const EFFECTIVE_TOKEN_SECRET = TOKEN_SECRET || FALLBACK_TOKEN_SECRET;
+const EFFECTIVE_ADMIN_PASSWORD = ADMIN_PASSWORD || FALLBACK_ADMIN_PASSWORD;
 const SERVICE_PLANS = {
   trial_3d: {
     id: "trial_3d", name: "3天体验卡", price: 29.9, durationDays: 3,
@@ -575,6 +599,10 @@ async function initDatabase() {
   const userCountRes = await pool.query("select count(*) from users");
   const count = Number(userCountRes.rows[0].count);
   if (count === 0) {
+    // 生产环境不允许自动 seed 默认 123456 密码的演示账号
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("生产环境数据库为空，禁止自动 seed 默认账号。请先通过 /api/auth/admin/login + /api/reset 注入业务数据，或显式设置 NODE_ENV!=production 后再启动一次。");
+    }
     console.log("Database tables are empty. Seeding database with initial seedState...");
     await syncNormalizedState(seedState);
   }
@@ -610,14 +638,14 @@ function signToken(payload) {
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
   };
   const encoded = base64UrlEncode(body);
-  const signature = crypto.createHmac("sha256", TOKEN_SECRET).update(encoded).digest("base64url");
+  const signature = crypto.createHmac("sha256", EFFECTIVE_TOKEN_SECRET).update(encoded).digest("base64url");
   return `${encoded}.${signature}`;
 }
 
 function verifyToken(token) {
   if (!token || !token.includes(".")) return null;
   const [encoded, signature] = token.split(".");
-  const expected = crypto.createHmac("sha256", TOKEN_SECRET).update(encoded).digest("base64url");
+  const expected = crypto.createHmac("sha256", EFFECTIVE_TOKEN_SECRET).update(encoded).digest("base64url");
   if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   const payload = base64UrlDecode(encoded);
   if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
@@ -660,10 +688,18 @@ function verifyPassword(password, storedHash) {
   return crypto.timingSafeEqual(current, Buffer.from(hash, "hex"));
 }
 
-function publicState(data) {
+function publicState(data, viewerRole = "admin") {
+  // 默认 viewerRole="admin" 保留 phone/email/realName 等，用于登录/注册返回自己信息。
+  // 调用方需要按角色脱敏时显式传 viewerRole，非 admin 会移除其他用户的隐私字段。
+  const sanitizeUser = (rawUser) => {
+    const { passwordHash, idCard, ...rest } = rawUser;
+    if (viewerRole === "admin") return rest;
+    const { phone, email, realName, ...publicFields } = rest;
+    return publicFields;
+  };
   return {
     ...data,
-    users: (data.users || []).map(({ passwordHash, idCard, ...user }) => user),
+    users: (data.users || []).map(sanitizeUser),
     matchmakers: (data.matchmakers || []).map((rawMatchmaker) => {
       const { passwordHash, ...matchmaker } = ensureMatchmakerMetrics({ ...rawMatchmaker });
       return matchmaker;
@@ -807,6 +843,9 @@ function registerRealtimeClient(socket, auth) {
   const sockets = realtimeClients.get(key) || new Set();
   sockets.add(socket);
   realtimeClients.set(key, sockets);
+  // 心跳：每 30s 发一次 ping；客户端 60s 内未回 pong 则强制销毁，清理移动端断网残留连接。
+  socket.isAlive = true;
+  socket.on("pong", () => { socket.isAlive = true; });
 }
 
 function unregisterRealtimeClient(socket, auth) {
@@ -819,6 +858,21 @@ function unregisterRealtimeClient(socket, auth) {
     realtimeClients.delete(key);
   }
 }
+
+// 周期性向所有 WebSocket 客户端发 ping；超时未回 pong 的视为死连接，强制 terminate。
+const realtimeHeartbeat = setInterval(() => {
+  realtimeClients.forEach((sockets) => {
+    sockets.forEach((socket) => {
+      if (socket.isAlive === false) {
+        try { socket.terminate(); } catch {}
+        return;
+      }
+      socket.isAlive = false;
+      try { socket.ping(); } catch {}
+    });
+  });
+}, 30000);
+realtimeHeartbeat.unref?.();
 
 function sendRealtime(socket, payload) {
   if (!socket || socket.readyState !== 1) return;
@@ -1418,7 +1472,11 @@ app.get("/api/health", async (_request, response) => {
 
 app.post("/api/auth/admin/login", async (request, response) => {
   const { password } = request.body || {};
-  if (String(password || "") !== ADMIN_PASSWORD) {
+  // 定长比较，规避时序攻击
+  const given = Buffer.from(String(password || ""));
+  const expected = Buffer.from(EFFECTIVE_ADMIN_PASSWORD);
+  const ok = given.length === expected.length && crypto.timingSafeEqual(given, expected);
+  if (!ok) {
     response.status(401).json({ error: "invalid_credentials" });
     return;
   }
@@ -1608,8 +1666,28 @@ app.post("/api/auth/matchmaker/register", async (request, response) => {
   }
 });
 
-app.get("/api/state", async (_request, response) => {
-  response.json(publicState(await readState()));
+app.get("/api/state", requireAuth(["admin", "client", "matchmaker"]), async (request, response) => {
+  const state = await readState();
+  // 非管理员只保留自己完整的用户信息，其他用户脱敏（去掉 phone/email/realName）。
+  if (request.user.role === "admin") {
+    response.json(publicState(state, "admin"));
+    return;
+  }
+  const selfId = request.user.sub;
+  const sanitized = {
+    ...state,
+    users: (state.users || []).map((rawUser) => {
+      const { passwordHash, idCard, ...rest } = rawUser;
+      if (rawUser.id === selfId) return rest;
+      const { phone, email, realName, ...publicFields } = rest;
+      return publicFields;
+    }),
+    matchmakers: (state.matchmakers || []).map((rawMatchmaker) => {
+      const { passwordHash, ...matchmaker } = ensureMatchmakerMetrics({ ...rawMatchmaker });
+      return matchmaker;
+    }),
+  };
+  response.json(sanitized);
 });
 
 app.put("/api/state", requireAuth(["admin"]), async (request, response) => {
@@ -2242,49 +2320,95 @@ app.patch("/api/matchmaker/requests/:id/service-progress", requireAuth(["matchma
   const requestId = request.params.id;
   const matchmakerId = request.user.sub;
   const action = request.body?.action;
-  const reqRes = await pool.query("select raw from match_requests where id = $1", [requestId]);
-  if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
-  const req = ensureRequestDefaults(reqRes.rows[0].raw);
-  if (req.matchmakerId !== matchmakerId) return response.status(403).json({ error: "forbidden" });
-  if (rejectTerminalRequest(req, response)) return;
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // 锁定 request 行，防止并发修改
+    const reqRes = await client.query("select raw from match_requests where id = $1 for update", [requestId]);
+    if (reqRes.rows.length === 0) {
+      await client.query("rollback");
+      return response.status(404).json({ error: "request_not_found" });
+    }
+    const req = ensureRequestDefaults(reqRes.rows[0].raw);
+    if (req.matchmakerId !== matchmakerId) {
+      await client.query("rollback");
+      return response.status(403).json({ error: "forbidden" });
+    }
+    if (rejectTerminalRequest(req, response)) {
+      await client.query("rollback");
+      return;
+    }
 
-  const fromRes = await pool.query("select raw from users where id = $1", [req.fromUserId]);
-  const customer = fromRes.rows[0] ? ensureUserDefaults(fromRes.rows[0].raw) : null;
-  if (!customer) return response.status(404).json({ error: "customer_not_found" });
-  const servicePlan = customer.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer.servicePlan;
+    // 锁定客户行，防止 weeklyFollowupUsed / servicePlans 并发更新丢失
+    const fromRes = await client.query("select raw from users where id = $1 for update", [req.fromUserId]);
+    const customer = fromRes.rows[0] ? ensureUserDefaults(fromRes.rows[0].raw) : null;
+    if (!customer) {
+      await client.query("rollback");
+      return response.status(404).json({ error: "customer_not_found" });
+    }
+    const servicePlan = customer.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer.servicePlan;
+    // 校验服务计划是否仍有效（未过期且 active）
+    const now = Date.now();
+    const isPlanActive = (plan) => {
+      if (!plan) return false;
+      if (plan.status && plan.status !== "active") return false;
+      if (plan.expiresAt) {
+        const exp = new Date(plan.expiresAt).getTime();
+        if (!Number.isNaN(exp) && exp < now) return false;
+      }
+      return true;
+    };
+    if (!isPlanActive(servicePlan)) {
+      await client.query("rollback");
+      return response.status(409).json({ error: "service_plan_expired", message: "客户的服务包已过期，无法继续推进服务" });
+    }
 
-  req.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
-  if (action === "follow_up") {
-    if (!servicePlan || (servicePlan.weeklyFollowupLimit !== null && servicePlan.weeklyFollowupUsed >= servicePlan.weeklyFollowupLimit)) {
-      return response.status(429).json({ error: "weekly_followup_quota_exhausted", message: "该服务包的跟进权益已用完" });
+    req.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
+    if (action === "follow_up") {
+      if (!servicePlan || (servicePlan.weeklyFollowupLimit !== null && servicePlan.weeklyFollowupUsed >= servicePlan.weeklyFollowupLimit)) {
+        await client.query("rollback");
+        return response.status(429).json({ error: "weekly_followup_quota_exhausted", message: "该服务包的跟进权益已用完" });
+      }
+      servicePlan.weeklyFollowupUsed += 1;
+      req.followupCount = Number(req.followupCount || 0) + 1;
+      req.serviceStage = "红娘持续跟进中";
+      req.rewardLedger.followup = 0;
+    } else if (action === "effective_match") {
+      if (!req.maleContacted || !req.femaleContacted) {
+        await client.query("rollback");
+        return response.status(409).json({ error: "both_sides_not_contacted", message: "请先分别联系男女双方" });
+      }
+      req.serviceStage = "已完成有效匹配";
+      req.matchOutcome = "effective";
+      req.rewardLedger.effectiveMatch = 0;
+    } else if (action === "not_fit") {
+      if (!servicePlan) {
+        await client.query("rollback");
+        return response.status(409).json({ error: "service_plan_not_found" });
+      }
+      req.serviceStage = "不合适，等待重新匹配";
+      req.matchOutcome = "not_fit";
+      if (!req.matchCreditReturned) {
+        servicePlan.weeklyMatchUsed = Math.max(0, Number(servicePlan.weeklyMatchUsed || 0) - 1);
+        servicePlan.totalMatchUsed = Math.max(0, Number(servicePlan.totalMatchUsed || 0) - 1);
+        req.matchCreditReturned = true;
+      }
+    } else {
+      await client.query("rollback");
+      return response.status(400).json({ error: "invalid_service_action" });
     }
-    servicePlan.weeklyFollowupUsed += 1;
-    req.followupCount = Number(req.followupCount || 0) + 1;
-    req.serviceStage = "红娘持续跟进中";
-    req.rewardLedger.followup = 0;
-  } else if (action === "effective_match") {
-    if (!req.maleContacted || !req.femaleContacted) {
-      return response.status(409).json({ error: "both_sides_not_contacted", message: "请先分别联系男女双方" });
-    }
-    req.serviceStage = "已完成有效匹配";
-    req.matchOutcome = "effective";
-    req.rewardLedger.effectiveMatch = 0;
-  } else if (action === "not_fit") {
-    if (!servicePlan) return response.status(409).json({ error: "service_plan_not_found" });
-    req.serviceStage = "不合适，等待重新匹配";
-    req.matchOutcome = "not_fit";
-    if (!req.matchCreditReturned) {
-      servicePlan.weeklyMatchUsed = Math.max(0, Number(servicePlan.weeklyMatchUsed || 0) - 1);
-      servicePlan.totalMatchUsed = Math.max(0, Number(servicePlan.totalMatchUsed || 0) - 1);
-      req.matchCreditReturned = true;
-    }
-  } else {
-    return response.status(400).json({ error: "invalid_service_action" });
+
+    await client.query("update users set raw = $1, updated_at = now() where id = $2", [JSON.stringify(customer), customer.id]);
+    await client.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
+    await client.query("commit");
+    response.json({ request: req, state: publicState(await readState()) });
+  } catch (err) {
+    try { await client.query("rollback"); } catch {}
+    console.error("service-progress error:", err);
+    response.status(500).json({ error: "internal_error" });
+  } finally {
+    client.release();
   }
-
-  await pool.query("update users set raw = $1, updated_at = now() where id = $2", [JSON.stringify(customer), customer.id]);
-  await pool.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
-  response.json({ request: req, state: publicState(await readState()) });
 });
 
 // 成功奖励必须由会员本人确认，红娘不能单方面把普通牵线标记为脱单
@@ -2292,28 +2416,49 @@ app.patch("/api/client/match-requests/:id/outcome", requireAuth(["client"]), asy
   const requestId = request.params.id;
   const outcome = request.body?.outcome;
   if (outcome !== "stable_progress") return response.status(400).json({ error: "invalid_outcome" });
-  const reqRes = await pool.query("select raw from match_requests where id = $1", [requestId]);
-  if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
-  const req = ensureRequestDefaults(reqRes.rows[0].raw);
-  if (req.fromUserId !== request.user.sub) return response.status(403).json({ error: "forbidden" });
-  if (rejectTerminalRequest(req, response)) return;
-  if (req.matchOutcome !== "effective" || !req.maleContacted || !req.femaleContacted) {
-    return response.status(409).json({ error: "effective_match_required", message: "红娘确认有效匹配后才能确认稳定发展" });
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const reqRes = await client.query("select raw from match_requests where id = $1 for update", [requestId]);
+    if (reqRes.rows.length === 0) {
+      await client.query("rollback");
+      return response.status(404).json({ error: "request_not_found" });
+    }
+    const req = ensureRequestDefaults(reqRes.rows[0].raw);
+    if (req.fromUserId !== request.user.sub) {
+      await client.query("rollback");
+      return response.status(403).json({ error: "forbidden" });
+    }
+    if (rejectTerminalRequest(req, response)) {
+      await client.query("rollback");
+      return;
+    }
+    if (req.matchOutcome !== "effective" || !req.maleContacted || !req.femaleContacted) {
+      await client.query("rollback");
+      return response.status(409).json({ error: "effective_match_required", message: "红娘确认有效匹配后才能确认稳定发展" });
+    }
+    const customerRes = await client.query("select raw from users where id = $1 for update", [req.fromUserId]);
+    const customer = customerRes.rows[0] ? ensureUserDefaults(customerRes.rows[0].raw) : null;
+    const servicePlan = customer?.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer?.servicePlan;
+    req.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
+    req.serviceStage = "双方稳定发展（用户确认）";
+    req.matchOutcome = outcome;
+    req.status = "已完成";
+    req.rewardLedger.success = Number(servicePlan?.successReward || 0);
+    req.rewardLedger.status = "eligible";
+    await client.query(
+      "update match_requests set status = $1, raw = $2, updated_at = now() where id = $3",
+      [req.status, JSON.stringify(req), requestId],
+    );
+    await client.query("commit");
+    response.json({ request: req, state: publicState(await readState()) });
+  } catch (err) {
+    try { await client.query("rollback"); } catch {}
+    console.error("outcome error:", err);
+    response.status(500).json({ error: "internal_error" });
+  } finally {
+    client.release();
   }
-  const customerRes = await pool.query("select raw from users where id = $1", [req.fromUserId]);
-  const customer = customerRes.rows[0] ? ensureUserDefaults(customerRes.rows[0].raw) : null;
-  const servicePlan = customer?.servicePlans.find((plan) => plan.subscriptionId === req.servicePlanId) || customer?.servicePlan;
-  req.rewardLedger ||= { effectiveMatch: 0, followup: 0, success: 0, status: "pending" };
-  req.serviceStage = "双方稳定发展（用户确认）";
-  req.matchOutcome = outcome;
-  req.status = "已完成";
-  req.rewardLedger.success = Number(servicePlan?.successReward || 0);
-  req.rewardLedger.status = "eligible";
-  await pool.query(
-    "update match_requests set status = $1, raw = $2, updated_at = now() where id = $3",
-    [req.status, JSON.stringify(req), requestId],
-  );
-  response.json({ request: req, state: publicState(await readState()) });
 });
 
 // 服务完成后由会员评价红娘，评分用于曝光和接单排序
@@ -2321,24 +2466,48 @@ app.patch("/api/client/match-requests/:id/rating", requireAuth(["client"]), asyn
   const requestId = request.params.id;
   const rating = Number(request.body?.rating);
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) return response.status(400).json({ error: "rating_invalid" });
-  const reqRes = await pool.query("select raw from match_requests where id = $1", [requestId]);
-  if (reqRes.rows.length === 0) return response.status(404).json({ error: "request_not_found" });
-  const req = ensureRequestDefaults(reqRes.rows[0].raw);
-  if (req.fromUserId !== request.user.sub) return response.status(403).json({ error: "forbidden" });
-  if (req.status !== "已完成") return response.status(409).json({ error: "service_not_completed" });
-  if (req.customerRating) return response.status(409).json({ error: "rating_already_submitted" });
-  req.customerRating = rating;
-  req.customerFeedback = String(request.body?.comment || "").trim().slice(0, 500);
-  await pool.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
-  const mmRes = await pool.query("select raw from matchmakers where id = $1", [req.matchmakerId]);
-  if (mmRes.rows[0]) {
-    const mm = mmRes.rows[0].raw;
-    mm.ratingCount = Number(mm.ratingCount || 0) + 1;
-    mm.ratingTotal = Number(mm.ratingTotal || 0) + rating;
-    mm.serviceScore = Number((mm.ratingTotal / mm.ratingCount).toFixed(2));
-    await pool.query("update matchmakers set raw = $1, updated_at = now() where id = $2", [JSON.stringify(mm), req.matchmakerId]);
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const reqRes = await client.query("select raw from match_requests where id = $1 for update", [requestId]);
+    if (reqRes.rows.length === 0) {
+      await client.query("rollback");
+      return response.status(404).json({ error: "request_not_found" });
+    }
+    const req = ensureRequestDefaults(reqRes.rows[0].raw);
+    if (req.fromUserId !== request.user.sub) {
+      await client.query("rollback");
+      return response.status(403).json({ error: "forbidden" });
+    }
+    if (req.status !== "已完成") {
+      await client.query("rollback");
+      return response.status(409).json({ error: "service_not_completed" });
+    }
+    if (req.customerRating) {
+      await client.query("rollback");
+      return response.status(409).json({ error: "rating_already_submitted" });
+    }
+    req.customerRating = rating;
+    req.customerFeedback = String(request.body?.comment || "").trim().slice(0, 500);
+    await client.query("update match_requests set raw = $1, updated_at = now() where id = $2", [JSON.stringify(req), requestId]);
+    // 锁定红娘行，防止 ratingCount/ratingTotal 并发更新丢失
+    const mmRes = await client.query("select raw from matchmakers where id = $1 for update", [req.matchmakerId]);
+    if (mmRes.rows[0]) {
+      const mm = mmRes.rows[0].raw;
+      mm.ratingCount = Number(mm.ratingCount || 0) + 1;
+      mm.ratingTotal = Number(mm.ratingTotal || 0) + rating;
+      mm.serviceScore = Number((mm.ratingTotal / mm.ratingCount).toFixed(2));
+      await client.query("update matchmakers set raw = $1, updated_at = now() where id = $2", [JSON.stringify(mm), req.matchmakerId]);
+    }
+    await client.query("commit");
+    response.json({ request: req, state: publicState(await readState()) });
+  } catch (err) {
+    try { await client.query("rollback"); } catch {}
+    console.error("rating error:", err);
+    response.status(500).json({ error: "internal_error" });
+  } finally {
+    client.release();
   }
-  response.json({ request: req, state: publicState(await readState()) });
 });
 
 app.post("/api/chat/threads/:id/messages", requireAuth(["client", "matchmaker"]), async (request, response) => {
@@ -2879,10 +3048,11 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
       return response.status(404).json({ code: 404, message: "用户不存在" });
     }
 
-    // 排除敏感字段
+    // 排除敏感字段：任何情况下都不返回 passwordHash、idCard、profileByMatchmaker、
+    // phone、email、realName 给其他用户。
     const target = ensureUserDefaults(targetRes.rows[0].raw);
     const visibleUser = applyPublishedProfile(target);
-    const { passwordHash, idCard, profileByMatchmaker, ...userInfo } = visibleUser;
+    const { passwordHash, idCard, profileByMatchmaker, phone, email, realName, ...userInfo } = visibleUser;
     // 非 VIP 用户不返回微信号
     if (!canViewTargetContact(me, target)) {
       delete userInfo.wechat;
