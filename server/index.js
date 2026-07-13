@@ -635,10 +635,20 @@ function ensureUserDefaults(user) {
   if (!Array.isArray(user.delegatedMatchmakerIds)) {
     user.delegatedMatchmakerIds = user.referralMatchmakerId ? [user.referralMatchmakerId] : [];
   }
+  // 兼容早期数据：绑定关系可能只保存在 referralMatchmakerId，不能因数组为空误判未绑定。
+  if (user.referralMatchmakerId && !user.delegatedMatchmakerIds.includes(user.referralMatchmakerId)) {
+    user.delegatedMatchmakerIds.unshift(user.referralMatchmakerId);
+  }
+  if (user.vip && user.referralMatchmakerId && !user.vipMatchmakerIds.includes(user.referralMatchmakerId)) {
+    user.vipMatchmakerIds.push(user.referralMatchmakerId);
+  }
   if (!user.profileByMatchmaker || typeof user.profileByMatchmaker !== "object") {
     user.profileByMatchmaker = {};
   }
   user.vip = user.vip || user.vipMatchmakerIds.length > 0;
+  if (user.vip && user.referralMatchmakerId && !user.vipMatchmakerIds.includes(user.referralMatchmakerId)) {
+    user.vipMatchmakerIds.push(user.referralMatchmakerId);
+  }
   if (!user.servicePlan && user.vip) {
     const expiresAt = user.vipExpiresAt ? new Date(user.vipExpiresAt) : new Date(Date.now() + LEGACY_SERVICE_PLAN.durationDays * 24 * 60 * 60 * 1000);
     user.servicePlan = createServicePlan(new Date(expiresAt.getTime() - LEGACY_SERVICE_PLAN.durationDays * 24 * 60 * 60 * 1000), "monthly", user.referralMatchmakerId || null);
@@ -1893,8 +1903,19 @@ app.post("/api/client/match-requests", requireAuth(["client"]), async (request, 
     matchmakerId = toUser.delegatedMatchmakerIds?.[0] || toUser.referralMatchmakerId || fromUser.referralMatchmakerId || null;
   }
   if (!matchmakerId) return response.status(400).json({ error: "matchmaker_required" });
-  if (!fromUser.vipMatchmakerIds.includes(matchmakerId)) return response.status(403).json({ error: "matchmaker_vip_required" });
-  if (!toUser.delegatedMatchmakerIds.includes(matchmakerId)) return response.status(400).json({ error: "target_not_bound_to_matchmaker" });
+  const activeBoundMatchmakerIds = new Set([
+    ...fromUser.vipMatchmakerIds,
+    ...fromUser.servicePlans
+      .filter((plan) => plan.status === "active" && new Date(plan.expiresAt) > new Date() && plan.matchmakerId)
+      .map((plan) => plan.matchmakerId),
+    fromUser.referralMatchmakerId,
+  ].filter(Boolean));
+  if (!activeBoundMatchmakerIds.has(matchmakerId)) return response.status(403).json({ error: "matchmaker_vip_required" });
+  const targetBoundMatchmakerIds = new Set([
+    ...toUser.delegatedMatchmakerIds,
+    toUser.referralMatchmakerId,
+  ].filter(Boolean));
+  if (!targetBoundMatchmakerIds.has(matchmakerId)) return response.status(400).json({ error: "target_not_bound_to_matchmaker" });
 
   const requestedPlan = getActiveServicePlan(fromUser, matchmakerId);
   if (!requestedPlan) {
@@ -2515,7 +2536,7 @@ app.get("/api/client/me", requireAuth(["client"]), async (request, response) => 
       return response.status(404).json({ code: 404, message: "用户不存在" });
     }
 
-    const raw = userRes.rows[0].raw;
+    const raw = ensureUserDefaults(userRes.rows[0].raw);
     // 排除敏感字段：密码哈希和身份证号
     const { passwordHash, idCard, ...userInfo } = raw;
 
@@ -2636,9 +2657,10 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
 
     // 处理返回数据：排除敏感字段，非 VIP 不返回 wechat，并计算匹配度
     const list = listRes.rows.map((row) => {
-      const visibleUser = applyPublishedProfile(row.raw);
+      const target = ensureUserDefaults(row.raw);
+      const visibleUser = applyPublishedProfile(target);
       const { passwordHash, idCard, profileByMatchmaker, ...userInfo } = visibleUser;
-      if (!canViewTargetContact(me, row.raw)) {
+      if (!canViewTargetContact(me, target)) {
         delete userInfo.wechat;
       }
       userInfo.delegatedMatchmakers = (userInfo.delegatedMatchmakerIds || [])
@@ -2646,7 +2668,7 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
         .filter(Boolean)
         .map(({ passwordHash: _passwordHash, ...matchmaker }) => matchmaker);
       // 计算匹配度并加入返回
-      userInfo.matchScore = calculateMatchScore(row.raw, me);
+      userInfo.matchScore = calculateMatchScore(target, me);
       // 认证徽章
       userInfo.badges = {
         realName: !!row.raw.realNameVerified,
@@ -2690,10 +2712,11 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
     }
 
     // 排除敏感字段
-    const visibleUser = applyPublishedProfile(targetRes.rows[0].raw);
+    const target = ensureUserDefaults(targetRes.rows[0].raw);
+    const visibleUser = applyPublishedProfile(target);
     const { passwordHash, idCard, profileByMatchmaker, ...userInfo } = visibleUser;
     // 非 VIP 用户不返回微信号
-    if (!canViewTargetContact(me, targetRes.rows[0].raw)) {
+    if (!canViewTargetContact(me, target)) {
       delete userInfo.wechat;
     }
     const matchmakersRes = await pool.query("select raw from matchmakers");
