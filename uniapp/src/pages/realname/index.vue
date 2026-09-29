@@ -1,7 +1,7 @@
 <template>
   <view class="realname-container">
     <view class="notice-card">
-      <text class="notice-text">实名认证后可获得更多信任，提升匹配成功率</text>
+      <text class="notice-text">开发测试模拟：仅检查格式和出生日期，未连接公安身份核验。请勿提交真实身份证信息。</text>
     </view>
     
     <view class="form-section">
@@ -43,7 +43,7 @@ const form = reactive({
 onLoad(() => {
   if (userStore.profile) {
     if (userStore.profile.realNameVerified) {
-      uni.showToast({ title: '您已完成实名认证', icon: 'none' });
+      uni.showToast({ title: '模拟身份信息校验已通过', icon: 'none' });
       setTimeout(() => {
         uni.navigateBack();
       }, 1500);
@@ -69,7 +69,7 @@ const handleSubmit = async () => {
   loading.value = true;
   try {
     await submitRealNameApi(form);
-    uni.showToast({ title: '提交成功，审核中', icon: 'success' });
+    uni.showToast({ title: '模拟校验通过（非第三方认证）', icon: 'success' });
     userStore.fetchProfile();
     setTimeout(() => {
       uni.navigateBack();

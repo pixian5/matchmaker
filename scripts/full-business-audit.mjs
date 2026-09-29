@@ -141,6 +141,7 @@ await step("client registration/profile/review", async () => {
   });
   maleToken = male.data.token;
   ids.maleId = male.data.user.id;
+  assert(!Object.hasOwn(male.data, "state"), "public client registration must not return a global state snapshot");
   assert(male.data.user.matchmakerIds?.length > 0, "default matchmakers missing");
 
   const profile = await req(BASE_CLIENT, "/client/profile", {
@@ -157,7 +158,7 @@ await step("client registration/profile/review", async () => {
 
   const login = await req(BASE_MM, "/auth/matchmaker/login", {
     method: "POST",
-    body: { matchmakerId: "m1" },
+    body: { account: "HM-LILI", password: "123456" },
   });
   mmToken = login.data.token;
   const review = await req(BASE_MM, `/matchmaker/users/${ids.maleId}/profile-review`, {
@@ -184,6 +185,7 @@ await step("vip scoped visibility and match request", async () => {
     },
   });
   ids.femaleId = female.data.user.id;
+  assert(!Object.hasOwn(female.data, "state"), "public client registration must not return a global state snapshot");
 
   const blocked = await req(BASE_CLIENT, "/client/match-requests", {
     method: "POST",
@@ -211,10 +213,15 @@ await step("vip scoped visibility and match request", async () => {
     body: { targetUserId: ids.femaleId, matchmakerId: "m1" },
   });
   ids.requestId = created.data.request.id;
-  const threads = created.data.state.chatThreads.filter((thread) => thread.requestId === ids.requestId);
-  assert(threads.filter((thread) => thread.type === "member_matchmaker").length === 2, "missing 1v1 threads");
-  // 根据《业务逻辑审计与防错清单》第六条，申请牵线时即应创建 matchmaker_group
-  assert(threads.filter((thread) => thread.type === "matchmaker_group").length === 1, "matchmaker_group must be created on request creation");
+  const visibleThreads = created.data.state.chatThreads.filter((thread) => thread.requestId === ids.requestId);
+  assert(visibleThreads.filter((thread) => thread.type === "member_matchmaker").length === 1, "client should only receive its own 1v1 thread");
+  assert(visibleThreads.filter((thread) => thread.type === "matchmaker_group").length === 1, "matchmaker_group must be visible to its participants");
+  assert(!visibleThreads.some((thread) => thread.participants.some((participant) => participant.id === ids.femaleId) && thread.type === "member_matchmaker"), "client received the other member's private thread");
+  // 管理员快照验证数据库仍按业务规则创建了双方各自的一对一线程。
+  const adminState = await req(BASE_ADMIN, "/state", { token: adminToken });
+  const allThreads = adminState.data.chatThreads.filter((thread) => thread.requestId === ids.requestId);
+  assert(allThreads.filter((thread) => thread.type === "member_matchmaker").length === 2, "both member-matchmaker threads must be persisted");
+  assert(allThreads.filter((thread) => thread.type === "matchmaker_group").length === 1, "group thread must be persisted");
   assert(created.data.request.groupThreadId, "groupThreadId missing in response");
 });
 
@@ -239,11 +246,15 @@ await step("chat isolation and member chat gate", async () => {
     token: mmToken,
     body: { enabled: true },
   });
-  const memberThread = enabled.data.state.chatThreads.find(
+  assert(!enabled.data.state.chatThreads.some(
+    (thread) => thread.requestId === ids.requestId && thread.type === "member_member",
+  ), "matchmaker state must not include a member-only conversation");
+  const adminState = await req(BASE_ADMIN, "/state", { token: adminToken });
+  const memberThread = adminState.data.chatThreads.find(
     (thread) => thread.requestId === ids.requestId && thread.type === "member_member",
   );
   assert(memberThread, "member_member not created");
-  const group = enabled.data.state.chatThreads.find(
+  const group = adminState.data.chatThreads.find(
     (thread) => thread.requestId === ids.requestId && thread.type === "matchmaker_group",
   );
   assert(group && group.participants.length === 3, "group thread not created after approval");
@@ -299,14 +310,19 @@ await step("request completion, rating and rematch", async () => {
   ids.rematchRequestId = rematch.data.request.id;
 });
 
-await step("client cannot write whole state", async () => {
-  const rejected = await req(BASE_CLIENT, "/state", {
+await step("client cannot read or write whole state", async () => {
+  const readRejected = await req(BASE_CLIENT, "/state", {
+    token: maleToken,
+    expected: [403],
+  });
+  assert(readRejected.status === 403, "client state read should reject");
+  const writeRejected = await req(BASE_CLIENT, "/state", {
     method: "PUT",
     token: maleToken,
     body: { users: [] },
     expected: [403],
   });
-  assert(rejected.status === 403, "client state write should reject");
+  assert(writeRejected.status === 403, "client state write should reject");
 });
 
 const failed = results.filter((result) => !result.ok);

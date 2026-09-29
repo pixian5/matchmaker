@@ -1,7 +1,7 @@
 /**
  * 认证相关接口
  */
-import { post } from "./request";
+import { get, post } from "./request";
 import { getCurrentRole, removeSession } from "../utils/session";
 
 // 客户端登录
@@ -10,7 +10,10 @@ export const loginApi = (data) => post("/auth/client/login", data, { noAuth: tru
 // 客户端注册
 export const registerApi = (data) => post("/auth/client/register", data, { noAuth: true });
 
-// 红娘登录（选择已有红娘一键登录，也支持账号密码）
+// 登录前仅公开机构的名称和城市，避免匿名客户端读取完整业务状态。
+export const getPublicAgenciesApi = () => get("/public/agencies", undefined, { noAuth: true });
+
+// 红娘使用手机号、邮箱或自设红娘识别码及密码登录。
 export const matchmakerLoginApi = (data) => post("/auth/matchmaker/login", data, { noAuth: true });
 
 // 红娘注册

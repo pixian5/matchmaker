@@ -2,8 +2,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
 FROM node:22-alpine AS runtime
 
@@ -15,7 +15,7 @@ RUN apk add --no-cache wget && rm -rf /var/cache/apk/*
 # 创建非 root 用户运行应用
 RUN addgroup -S app && adduser -S -G app -h /app app
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
-COPY --chown=app:app index.js package.json ./
+COPY --chown=app:app index.js state-visibility.js package.json package-lock.json ./
 
 USER app
 

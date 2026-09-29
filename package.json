@@ -1,11 +1,11 @@
 {
   "name": "matchmaker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MatchMaker - 单身交友平台，包含真实客户 H5、红娘工作台、管理后台、Node/Express API、PostgreSQL 数据库和 Docker/Nginx 部署配置。",
   "main": "app.js",
   "scripts": {
     "render:static": "node ./scripts/render-static.mjs",
-    "test": "node ./scripts/test-message-order.mjs && node ./scripts/test-business-invariants.mjs && node --check server/index.js && node --check app.js"
+    "test": "node ./scripts/test-message-order.mjs && node ./scripts/test-business-invariants.mjs && node ./scripts/test-state-visibility.mjs && node ./scripts/test-auth-contracts.mjs && node --check server/index.js && node --check server/state-visibility.js && node --check app.js"
   },
   "repository": {
     "type": "git",

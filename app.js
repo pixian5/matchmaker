@@ -635,6 +635,19 @@ async function loadRemoteState() {
   return ensureStateDefaults(data);
 }
 
+async function syncStateFromServer() {
+  // 登录/注册后重新拉取服务端状态，避免依赖旧响应里的全量快照。
+  if (!apiAvailable) return;
+  try {
+    state = await loadRemoteState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    ensureStateDefaults(state);
+    renderAll();
+  } catch (error) {
+    console.warn(error);
+  }
+}
+
 async function syncRemoteState({ keepalive = false, notify = true } = {}) {
   if (session.role !== "admin") return;
   try {
@@ -3630,23 +3643,31 @@ async function mmAuthLogin() {
   const selectedId = $("#mmLoginSelect").value;
   const m = state.matchmakers.find((item) => item.id === selectedId);
   if (!m) return;
+  // 服务端已禁止按 ID 一键登录，必须提供账号与密码。
+  const password = $("#mmLoginPassword")?.value || "";
+  if (!password) {
+    showToast("请输入该红娘的登录密码");
+    return;
+  }
 
   if (apiAvailable) {
     try {
       const response = await fetch(`${API_BASE}/auth/matchmaker/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchmakerId: selectedId }),
+        body: JSON.stringify({ account: m.code || m.phone || m.email, password }),
       });
       if (!response.ok) throw new Error("login failed");
       const data = await response.json();
-      setAuthSession("matchmaker", selectedId, data.token);
+      setAuthSession("matchmaker", data.matchmaker.id, data.token);
+      await syncStateFromServer();
     } catch (error) {
-      showToast("红娘登录失败，请稍后重试");
+      showToast("红娘登录失败，请检查账号密码");
       return;
     }
   } else {
-    setAuthSession("matchmaker", selectedId, null);
+    showToast("当前为离线演示模式，无法登录线上账号");
+    return;
   }
   const is8097 = isMatchmakerView();
   navigate(is8097 ? "/workbench" : "/matchmaker/workbench");
@@ -3718,8 +3739,8 @@ async function mmAuthRegister(event) {
     return;
   }
 
-  state = ensureStateDefaults(data.state || state);
   setAuthSession("matchmaker", data.matchmaker.id, data.token);
+  await syncStateFromServer();
   form.reset();
   const is8097 = isMatchmakerView();
   navigate(is8097 ? "/workbench" : "/matchmaker/workbench");
@@ -3862,8 +3883,8 @@ async function miniRegisterUser(event) {
     return;
   }
 
-  state = ensureStateDefaults(data.state || state);
   setAuthSession("client", data.user.id, data.token);
+  await syncStateFromServer();
   form.reset();
   const is8096 = isMiniView();
   navigate(is8096 ? "/discover" : "/mini/discover");
@@ -3884,23 +3905,28 @@ async function miniSwitchUser() {
   const selectedId = $("#miniSwitchUserSelect").value;
   const user = state.users.find((u) => u.id === selectedId);
   if (!user) return;
+  // 服务端已禁止按 ID 一键登录，必须提供账号与密码。
+  const password = window.prompt(`请输入「${user.name}」的登录密码`);
+  if (!password) return;
 
   if (apiAvailable) {
     try {
       const response = await fetch(`${API_BASE}/auth/client/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: selectedId, password: "123456" }),
+        body: JSON.stringify({ account: user.wechat || user.phone || user.email, password }),
       });
       if (!response.ok) throw new Error("login failed");
       const data = await response.json();
-      setAuthSession("client", selectedId, data.token);
+      setAuthSession("client", data.user.id, data.token);
+      await syncStateFromServer();
     } catch (error) {
-      showToast("客户登录失败，请稍后重试");
+      showToast("客户登录失败，请检查账号密码");
       return;
     }
   } else {
-    setAuthSession("client", selectedId, null);
+    showToast("当前为离线演示模式，无法登录线上账号");
+    return;
   }
   const is8096 = isMiniView();
   navigate(is8096 ? "/discover" : "/mini/discover");

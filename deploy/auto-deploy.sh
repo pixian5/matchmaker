@@ -184,6 +184,24 @@ else
 fi
 
 if echo "$CHANGED_FILES" | grep -q '^server/'; then
+  log "检测到 server/ 变更，重建 API 前先备份数据库..."
+  if docker ps --format '{{.Names}}' | grep -qx 'matchmaker-postgres'; then
+    # 本次部署包含 schema 迁移，必须先 dump 一份可恢复备份，失败即中止部署
+    BACKUP_DIR="$REPO_DIR/backup/postgres"
+    BACKUP_FILE="backup-$(date +%Y%m%d_%H%M%S).dump"
+    mkdir -p "$BACKUP_DIR"
+    if docker exec matchmaker-postgres pg_dump \
+      -U "${POSTGRES_USER:-matchmaker}" \
+      -d "${POSTGRES_DB:-matchmaker}" \
+      -Fc -f "/backup/$BACKUP_FILE"; then
+      log "数据库备份完成: $BACKUP_DIR/$BACKUP_FILE"
+    else
+      log "ERROR: 数据库备份失败，已中止部署，请人工确认后再试"
+      exit 1
+    fi
+  else
+    log "matchmaker-postgres 容器未运行，跳过数据库备份（首次部署或数据库未启动）"
+  fi
   log "检测到 server/ 变更，重新构建 api 容器..."
   docker compose -f "$REPO_DIR/compose.yml" build api 2>&1 | tee -a "$LOG_FILE"
   docker compose -f "$REPO_DIR/compose.yml" up -d api 2>&1 | tee -a "$LOG_FILE"

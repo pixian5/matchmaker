@@ -2,6 +2,13 @@ import express from "express";
 import { createServer } from "http";
 import pg from "pg";
 import crypto from "crypto";
+import {
+  sanitizePrivateIdentifiers,
+  stripKeysDeep,
+  serializeMatchmakerReviewUser,
+  serializePublicMatchmaker,
+  serializePublicState,
+} from "./state-visibility.js";
 import { WebSocketServer } from "ws";
 
 const { Pool } = pg;
@@ -499,7 +506,13 @@ async function initDatabase() {
       updated_at timestamptz not null default now()
     )
   `);
-  await pool.query("alter table users drop column if exists referral_matchmaker_id");
+  await pool.query(`
+    create table if not exists app_migrations (
+      id text primary key,
+      applied_at timestamptz not null default now()
+    )
+  `);
+  await migrateLegacyPlaintextIdCards();
   await pool.query(`
     create table if not exists match_requests (
       id text primary key,
@@ -639,6 +652,47 @@ async function initDatabase() {
   }
 }
 
+
+async function migrateLegacyPlaintextIdCards() {
+  const migrationId = "20260929_remove_plaintext_id_cards";
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [migrationId]);
+    const existing = await client.query("select id from app_migrations where id = $1", [migrationId]);
+    if (existing.rows.length) {
+      await client.query("commit");
+      return;
+    }
+
+    // 历史版本曾把完整身份证号放入 raw；递归删除明文，只保留脱敏字段。
+    // 用 JSONB 谓词只挑选真正写入了号码的行，避免把 "idCard": null 的普通资料也重写一遍。
+    const rows = await client.query(
+      `select id, raw from users
+       where jsonb_path_exists(raw, 'strict $.**.idCard ? (@ != null)')
+       for update`,
+    );
+    let cleanedCount = 0;
+    for (const row of rows.rows) {
+      const cleaned = stripKeysDeep(row.raw, new Set(["idCard"]));
+      if (JSON.stringify(cleaned) === JSON.stringify(row.raw)) continue;
+      await client.query(
+        "update users set raw = $1::jsonb, updated_at = now() where id = $2",
+        [JSON.stringify(cleaned), row.id],
+      );
+      cleanedCount += 1;
+    }
+    await client.query("insert into app_migrations (id) values ($1)", [migrationId]);
+    await client.query("commit");
+    if (cleanedCount) console.log(`已从 ${cleanedCount} 条用户资料中清除明文身份证号`);
+  } catch (error) {
+    try { await client.query("rollback"); } catch (_) {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function validateState(data) {
   const requiredArrays = ["agencies", "matchmakers", "users", "requests", "chatThreads", "chatMessages", "deals", "promoCodes"];
   if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -722,69 +776,8 @@ function verifyPassword(password, storedHash) {
   return crypto.timingSafeEqual(current, Buffer.from(hash, "hex"));
 }
 
-function publicState(data, viewerRole = "admin", viewerId = null) {
-  // 默认 viewerRole="admin" 保留全部数据，用于 admin 操作和登录/注册返回自己信息。
-  // 非 admin 时：
-  //   - users: 脱敏其他用户的 phone/email/realName
-  //   - matchmakers: 脱敏 phone/email
-  //   - chatMessages/chatThreads/deals/promoCodes: 只返回与 viewer 相关的子集
-  const sanitizeUser = (rawUser) => {
-    const { passwordHash, idCard, ...rest } = rawUser;
-    if (viewerRole === "admin") return rest;
-    if (rawUser.id === viewerId) return rest;
-    const { phone, email, realName, ...publicFields } = rest;
-    return publicFields;
-  };
-  const sanitizeMatchmaker = (rawMatchmaker) => {
-    const { passwordHash, ...matchmaker } = ensureMatchmakerMetrics({ ...rawMatchmaker });
-    if (viewerRole === "admin") return matchmaker;
-    const { phone, email, ...publicFields } = matchmaker;
-    return publicFields;
-  };
-
-  if (viewerRole === "admin") {
-    return {
-      ...data,
-      users: (data.users || []).map(sanitizeUser),
-      matchmakers: (data.matchmakers || []).map(sanitizeMatchmaker),
-    };
-  }
-
-  // 非 admin: 只返回与 viewer 相关的数据子集
-  const viewerMatchmakerIds = new Set(
-    (data.matchmakers || [])
-      .filter((mm) => mm.id === viewerId)
-      .map((mm) => mm.id),
-  );
-  // 收集 viewer 参与的所有 request id
-  const relatedRequestIds = new Set();
-  for (const req of data.requests || []) {
-    if (req.fromUserId === viewerId || req.toUserId === viewerId || req.matchmakerId === viewerId || viewerMatchmakerIds.has(req.matchmakerId)) {
-      relatedRequestIds.add(req.id);
-    }
-  }
-  // 收集 viewer 可访问的 thread id
-  // 红娘只能看到自己参与的会话（participants 包含自己，或 thread.requestId 属于自己的 request）
-  const relatedThreadIds = new Set();
-  for (const thread of data.chatThreads || []) {
-    const participants = Array.isArray(thread.participants) ? thread.participants : [];
-    const participantIds = participants.map((p) => (typeof p === "object" ? p.id : p)).filter(Boolean);
-    if (participantIds.includes(viewerId)) {
-      relatedThreadIds.add(thread.id);
-    } else if (thread.requestId && relatedRequestIds.has(thread.requestId)) {
-      relatedThreadIds.add(thread.id);
-    }
-  }
-
-  return {
-    ...data,
-    users: (data.users || []).map(sanitizeUser),
-    matchmakers: (data.matchmakers || []).map(sanitizeMatchmaker),
-    chatThreads: (data.chatThreads || []).filter((t) => relatedThreadIds.has(t.id)),
-    chatMessages: (data.chatMessages || []).filter((m) => relatedThreadIds.has(m.threadId)),
-    deals: (data.deals || []).filter((d) => relatedRequestIds.has(d.requestId) || d.userId === viewerId),
-    promoCodes: (data.promoCodes || []).filter((p) => p.usedBy === viewerId),
-  };
+function publicState(data, viewerRole, viewerId) {
+  return serializePublicState(data, viewerRole, viewerId, ensureMatchmakerMetrics);
 }
 
 function ensureRequestDefaults(request) {
@@ -855,9 +848,11 @@ function applyPublishedProfile(user, matchmakerId = null) {
 
 // 脱敏自身用户对象：返回给用户本人的数据中不应包含 passwordHash 和完整 idCard
 function sanitizeUserSelf(user) {
-  if (!user || typeof user !== "object") return user;
-  const { passwordHash, idCard, ...rest } = user;
-  return rest;
+  return sanitizePrivateIdentifiers(user);
+}
+
+function sanitizeMatchmakerSelf(matchmaker) {
+  return sanitizePrivateIdentifiers(matchmaker);
 }
 
 function upsertUserVipMatchmaker(user, matchmakerId) {
@@ -1593,6 +1588,16 @@ app.get("/api/health", async (_request, response) => {
   response.json({ ok: true });
 });
 
+app.get("/api/public/agencies", async (_request, response) => {
+  try {
+    const result = await pool.query("select id, name, city from agencies order by name, id");
+    response.json({ code: 0, data: { list: result.rows }, message: "ok" });
+  } catch (error) {
+    console.error("读取公开机构列表失败:", error);
+    response.status(500).json({ code: 500, message: "服务器内部错误" });
+  }
+});
+
 app.post("/api/auth/admin/login", async (request, response) => {
   const { password } = request.body || {};
   // 定长比较，规避时序攻击
@@ -1610,19 +1615,19 @@ app.post("/api/auth/admin/login", async (request, response) => {
 });
 
 app.post("/api/auth/client/login", async (request, response) => {
-  const { userId, account, password } = request.body || {};
-  const state = await readState();
+  const { account, password } = request.body || {};
   const normalizedAccount = String(account || "").trim().toLowerCase();
-  const user = state.users.find((item) => {
-    if (userId && item.id === userId) return true;
-    return (
-      normalizedAccount &&
-      [item.phone, item.email, item.wechat]
-        .filter(Boolean)
-        .map((value) => String(value).toLowerCase())
-        .includes(normalizedAccount)
-    );
-  });
+  if (!normalizedAccount) {
+    return response.status(400).json({ error: "account_required", message: "请提供手机号、邮箱或微信号" });
+  }
+  const state = await readState();
+  // 禁止按用户 ID 直接登录：任何人知道 ID 即可冒充账号。
+  const user = state.users.find((item) =>
+    [item.phone, item.email, item.wechat]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase())
+      .includes(normalizedAccount)
+  );
 
   if (!user) {
     response.status(401).json({ error: "invalid_credentials" });
@@ -1635,24 +1640,24 @@ app.post("/api/auth/client/login", async (request, response) => {
 
   response.json({
     token: signToken({ role: "client", sub: user.id }),
-    user: publicState({ ...state, users: [user] }).users[0],
+    user: sanitizeUserSelf(user),
   });
 });
 
 app.post("/api/auth/matchmaker/login", async (request, response) => {
-  const { matchmakerId, account, password } = request.body || {};
+  const { account, password } = request.body || {};
+  const normalizedAccount = String(account || "").trim().toUpperCase();
+  if (!normalizedAccount) {
+    return response.status(400).json({ error: "account_required", message: "请提供手机号、邮箱或红娘识别码" });
+  }
   const state = await readState();
-  const normalizedAccount = String(account || "").trim().toLowerCase();
-  const matchmaker = state.matchmakers.find((item) => {
-    if (matchmakerId && item.id === matchmakerId) return true;
-    return (
-      normalizedAccount &&
-      [item.phone, item.email, item.code]
-        .filter(Boolean)
-        .map((value) => String(value).toLowerCase())
-        .includes(normalizedAccount)
-    );
-  });
+  // 禁止按红娘 ID 一键登录；登录必须使用账号资料加密码。
+  const matchmaker = state.matchmakers.find((item) =>
+    [item.phone, item.email, item.code]
+      .filter(Boolean)
+      .map((value) => String(value).toUpperCase())
+      .includes(normalizedAccount)
+  );
 
   if (!matchmaker) {
     response.status(401).json({ error: "invalid_credentials" });
@@ -1665,7 +1670,7 @@ app.post("/api/auth/matchmaker/login", async (request, response) => {
 
   response.json({
     token: signToken({ role: "matchmaker", sub: matchmaker.id }),
-    matchmaker: publicState({ ...state, matchmakers: [matchmaker] }).matchmakers[0],
+    matchmaker: sanitizeMatchmakerSelf(matchmaker),
   });
 });
 
@@ -1755,11 +1760,9 @@ app.post("/api/auth/client/register", async (request, response) => {
       ],
     );
     invalidateStateCache();
-    const state = await readState();
     response.status(201).json({
       token: signToken({ role: "client", sub: user.id }),
-      user: publicState({ ...state, users: [user] }).users[0],
-      state: publicState(state),
+      user: sanitizeUserSelf(user),
     });
   } catch (error) {
     if (error?.code === "23505") {
@@ -1773,12 +1776,15 @@ app.post("/api/auth/client/register", async (request, response) => {
 
 app.post("/api/auth/matchmaker/register", async (request, response) => {
   const input = request.body || {};
-  const phone = normalizePhone(input.phone);
+  const phone = validatePhone(input.phone);
   let email = normalizeEmail(input.email);
   const code = String(input.code || "").trim().toUpperCase();
   if (!phone || !code) {
     response.status(400).json({ error: "phone_and_code_required" });
     return;
+  }
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code)) {
+    return response.status(400).json({ error: "matchmaker_code_invalid", message: "红娘识别码需为 3-32 位字母、数字、下划线或连字符" });
   }
   // 密码校验（6-64位）
   const password = String(input.password || "");
@@ -1821,11 +1827,9 @@ app.post("/api/auth/matchmaker/register", async (request, response) => {
       ],
     );
     invalidateStateCache();
-    const state = await readState();
     response.status(201).json({
       token: signToken({ role: "matchmaker", sub: matchmaker.id }),
-      matchmaker: publicState({ ...state, matchmakers: [matchmaker] }).matchmakers[0],
-      state: publicState(state),
+      matchmaker: sanitizeMatchmakerSelf(matchmaker),
     });
   } catch (error) {
     if (error?.code === "23505") {
@@ -1842,7 +1846,7 @@ app.post("/api/auth/matchmaker/register", async (request, response) => {
   }
 });
 
-app.get("/api/state", requireAuth(["admin", "client", "matchmaker"]), async (request, response) => {
+app.get("/api/state", requireAuth(["admin", "matchmaker"]), async (request, response) => {
   const state = await readState();
   response.json(publicState(state, request.user.role, request.user.sub));
 });
@@ -1956,11 +1960,8 @@ app.patch("/api/matchmaker/users/:id/profile-review", requireAuth(["matchmaker"]
   user.profileByMatchmaker[matchmakerId] = profile;
 
   await pool.query("update users set raw = $1, updated_at = now() where id = $2", [JSON.stringify(user), userId]);
-  // 红娘审核端点：脱敏客户敏感字段（passwordHash、idCard、phone、email、realName、diplomaNo）
-  const { passwordHash: _ph, idCard: _idc, phone: _p, email: _e, realName: _rn, ...safeUser } = user;
-  if (safeUser.education) {
-    safeUser.education = { ...safeUser.education, diplomaNo: undefined };
-  }
+  // 红娘审核端点只返回当前红娘的资料副本，不返回身份证及联系人字段。
+  const safeUser = serializeMatchmakerReviewUser(user, matchmakerId);
   response.json({ user: safeUser, state: publicState(await readState(), request.user.role, request.user.sub) });
 });
 
@@ -2023,8 +2024,9 @@ app.post("/api/client/real-name", requireAuth(["client"]), async (request, respo
   user.realName = validatedName;
   // 身份证号脱敏存储（只保留前6后4，中间用*代替）
   user.idCardMasked = idCardTrimmed.substring(0, 6) + "********" + idCardTrimmed.substring(14);
-  user.idCard = idCardTrimmed; // 仍保留完整身份证号（仅服务端内部使用，不返回前端）
+  delete user.idCard; // 完整号码只用于本次年龄计算，不写入数据库
   user.realNameVerified = true;
+  user.realNameVerificationMode = "simulation";
   user.age = age;
   if (phone) {
     user.phone = validatePhone(phone);
@@ -2071,6 +2073,7 @@ app.post("/api/client/education-verify", requireAuth(["client"]), async (request
     graduationYear: year,
     diplomaNo: diplomaNo ? diplomaNo.trim() : null,
     verified: true,
+    verificationMode: "simulation",
     verifiedAt: new Date().toISOString(),
   };
 
@@ -2107,6 +2110,7 @@ app.post("/api/client/video-verify", requireAuth(["client"]), async (request, re
   }
 
   user.videoVerified = true;
+  user.videoVerificationMode = "simulation";
   user.videoVerifiedAt = new Date().toISOString();
 
   await pool.query(
@@ -2126,8 +2130,11 @@ app.get("/api/client/verify-status", requireAuth(["client"]), async (request, re
   const user = userRes.rows[0].raw;
   response.json({
     realNameVerified: !!user.realNameVerified,
+    realNameVerificationMode: user.realNameVerificationMode || (user.realNameVerified ? "legacy_simulation" : null),
     educationVerified: !!(user.education && user.education.verified),
+    educationVerificationMode: user.education?.verificationMode || null,
     videoVerified: !!user.videoVerified,
+    videoVerificationMode: user.videoVerificationMode || null,
     age: user.age || null,
     education: user.education || null,
   });
@@ -3242,8 +3249,8 @@ app.get("/api/client/me", requireAuth(["client"]), async (request, response) => 
     }
 
     const raw = ensureUserDefaults(userRes.rows[0].raw);
-    // 排除敏感字段：密码哈希和身份证号
-    const { passwordHash, idCard, ...userInfo } = raw;
+    // 递归排除历史嵌套资料中的密码哈希和完整身份证号。
+    const userInfo = sanitizePrivateIdentifiers(raw);
 
     response.json({ code: 0, data: { user: userInfo }, message: "ok" });
   } catch (err) {
@@ -3371,7 +3378,7 @@ app.get("/api/client/profiles", requireAuth(["client"]), async (request, respons
       userInfo.boundMatchmakers = (userInfo.matchmakerIds || [])
         .map((id) => matchmakerMap.get(id))
         .filter(Boolean)
-        .map(({ passwordHash: _passwordHash, ...matchmaker }) => matchmaker);
+        .map(serializePublicMatchmaker);
       // 计算匹配度并加入返回
       userInfo.matchScore = calculateMatchScore(target, me);
       // 认证徽章
@@ -3436,7 +3443,7 @@ app.get("/api/client/profiles/:id", requireAuth(["client"]), async (request, res
     userInfo.boundMatchmakers = (userInfo.matchmakerIds || [])
       .map((id) => matchmakerMap.get(id))
       .filter(Boolean)
-      .map(({ passwordHash: _passwordHash, ...matchmaker }) => matchmaker);
+      .map(serializePublicMatchmaker);
 
     const matchRequestRes = await pool.query(
       `select raw from match_requests

@@ -64,9 +64,8 @@ POST /api/auth/client/login
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| userId | string | 否 | 直接按 ID 登录（演示用） |
-| account | string | 否 | 手机/邮箱/微信号 |
-| password | string | 否 | 密码 |
+| account | string | 是 | 手机号 / 邮箱 / 微信号 |
+| password | string | 是 | 密码 |
 
 **响应**：
 
@@ -80,22 +79,21 @@ POST /api/auth/client/login
 **登录逻辑**：
 
 ```
-1. 如果提供了 userId → 直接查找该用户
-2. 如果提供了 account → 按 phone/email/wechat 模糊匹配
-3. 找到用户后：
-   - 用户无 passwordHash → 允许登录（演示账号一键登录）
-   - 用户有 passwordHash → 验证密码
+1. account 必填，缺失 → 400 account_required
+2. 按 phone/email/wechat 匹配用户（不区分大小写）
+3. 必须提供正确的 passwordHash 对应的密码，否则 401 invalid_credentials
 4. 验证通过 → 签发 Token
 ```
 
 **错误场景**：
 
+- account 缺失 → 400 `{ "error": "account_required" }`
 - 用户不存在 → 401 `{ "error": "invalid_credentials" }`
 - 密码错误 → 401 `{ "error": "invalid_credentials" }`
 
 **复杂场景**：
 
-- 演示账号（无密码）可按 userId 直接登录，正式上线需禁用
+- 1.0.1 起服务端不再接受 `userId` 参数，按 ID 直接登录一律拒绝
 - account 匹配时会同时检查 phone、email、wechat 三个字段
 - 匹配不区分大小写（统一转小写比较）
 
@@ -176,9 +174,8 @@ POST /api/auth/matchmaker/login
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| matchmakerId | string | 否 | 直接按 ID 登录 |
-| account | string | 否 | 手机/邮箱/推荐码 |
-| password | string | 否 | 密码 |
+| account | string | 是 | 手机号 / 邮箱 / 红娘识别码 |
+| password | string | 是 | 密码 |
 
 **响应**：
 
@@ -191,10 +188,12 @@ POST /api/auth/matchmaker/login
 
 **登录逻辑**：
 
-与客户登录类似：
-1. 按 matchmakerId 或 account 查找
-2. 无密码则一键登录，有密码则验证
-3. account 匹配检查 phone、email、code 三个字段
+与客户登录一致（1.0.1 起）：
+
+1. account 必填，缺失 → 400 `account_required`
+2. 按 phone/email/红娘识别码（`code`）匹配，识别码不区分大小写
+3. 必须提供正确密码，否则 401 `invalid_credentials`
+4. 不再接受 `matchmakerId` 参数
 
 ---
 
@@ -242,9 +241,9 @@ POST /api/auth/matchmaker/register
 GET /api/state
 ```
 
-**无需认证**。
+**认证**：`Bearer Token`，角色必须是 `admin` 或 `matchmaker`；客户角色返回 403。
 
-**响应**：脱敏后的完整状态 JSON（剔除 `passwordHash` 和 `idCard`）。
+**响应**：按调用者角色最小化输出的状态 JSON（见 `server/state-visibility.js`）。
 
 **数据量**：包含所有用户、红娘、机构、牵线请求、聊天线程、聊天消息、成交记录、兑换码。
 
@@ -381,8 +380,8 @@ POST /api/client/real-name
 
 - 如果注册时只填了邮箱没填手机号，实名时需要补填手机号
 - 认证后 `realNameVerified` 设为 true
-- `realName` 和完整 `idCard` 存储在 raw JSON 中，不返回前端
-- 同时返回脱敏后的身份证号 `idCardMasked`（前6后4，中间8位用*）
+- 1.0.1 起只保存 `idCardMasked`（前6后4，中间8位用*），完整身份证号仅用于本次年龄计算，不写入数据库
+- 写入 `realNameVerificationMode: "simulation"`，表示这是开发测试模拟，不是公安二要素核验
 - 从身份证解析出的 `age` 同步更新到用户资料
 
 ---

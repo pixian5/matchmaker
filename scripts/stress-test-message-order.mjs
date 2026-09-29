@@ -6,6 +6,9 @@ import http from "node:http";
 import https from "node:https";
 
 const API_BASE = process.argv[2] || "https://uk.sbbz.tech:21314";
+// 演示种子账号：登录使用微信号/手机号/邮箱，不再支持按用户 ID 登录。
+const LOGIN_CLIENT = process.env.CLIENT_ACCOUNT || "linan_dev";
+const LOGIN_PASSWORD = process.env.CLIENT_PASSWORD || "123456";
 const THREAD_ID = process.argv[3] || null;
 
 function request(method, path, body, token) {
@@ -42,8 +45,8 @@ function request(method, path, body, token) {
   });
 }
 
-async function loginClient(userId, password) {
-  const res = await request("POST", "/api/auth/client/login", { userId, password });
+async function loginClient(account, password) {
+  const res = await request("POST", "/api/auth/client/login", { account, password });
   if (res.status !== 200) throw new Error(`登录失败: ${JSON.stringify(res.body)}`);
   return res.body.token;
 }
@@ -85,7 +88,7 @@ async function main() {
 
   // 登录
   console.log("\n1. 登录测试账号...");
-  const token = await loginClient("u1", "123456");
+  const token = await loginClient(LOGIN_CLIENT, LOGIN_PASSWORD);
   console.log("   登录成功");
 
   // 获取线程

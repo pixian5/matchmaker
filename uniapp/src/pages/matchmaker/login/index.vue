@@ -8,23 +8,25 @@
 
     <view class="tab-bar">
       <view class="tab-item" :class="{ active: mode === 'login' }" @click="mode = 'login'">
-        一键登录
+        账号密码登录
       </view>
       <view class="tab-item" :class="{ active: mode === 'register' }" @click="mode = 'register'">
         注册红娘
       </view>
     </view>
 
-    <!-- 登录面板 -->
+    <!-- 登录面板：账号信息由用户本人提供，不在登录前读取完整业务状态 -->
     <view v-if="mode === 'login'" class="form-section">
       <view class="form-group">
-        <text class="form-label">选择红娘</text>
-        <picker mode="selector" :range="matchmakerOptions" :value="loginIndex" @change="handleLoginChange">
-          <view class="picker-value">{{ loginOptions[loginIndex]?.label || '请选择' }}</view>
-        </picker>
+        <text class="form-label">红娘账号</text>
+        <input class="form-input" v-model="loginForm.account" placeholder="手机号、邮箱或红娘识别码" />
       </view>
-      <button class="btn-primary" @click="handleLogin" :class="{ disabled: loading || !loginOptions.length }">
-        {{ loading ? '登录中...' : '一键登录' }}
+      <view class="form-group">
+        <text class="form-label">登录密码</text>
+        <input class="form-input" v-model="loginForm.password" password placeholder="请输入登录密码" />
+      </view>
+      <button class="btn-primary" @click="handleLogin" :class="{ disabled: loading || !loginForm.account || !loginForm.password }">
+        {{ loading ? '登录中...' : '登录' }}
       </button>
     </view>
 
@@ -49,8 +51,8 @@
         <input class="form-input" v-model="registerForm.email" placeholder="请输入邮箱" />
       </view>
       <view class="form-group">
-        <text class="form-label">推荐码</text>
-        <input class="form-input" v-model="registerForm.code" placeholder="请输入推荐码，如 HM-LILI" />
+        <text class="form-label">设置红娘唯一识别码</text>
+        <input class="form-input" v-model="registerForm.code" placeholder="供会员识别和订阅，例如 MM-LILI-01" />
       </view>
       <view class="form-group">
         <text class="form-label">登录密码</text>
@@ -70,7 +72,7 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
-import { matchmakerLoginApi, matchmakerRegisterApi } from '@/api/auth';
+import { getPublicAgenciesApi, matchmakerLoginApi, matchmakerRegisterApi } from '@/api/auth';
 import { useUserStore } from '@/store/user';
 import { useAppStore } from '@/store/appStore';
 
@@ -79,7 +81,8 @@ const appStore = useAppStore();
 
 const mode = ref('login');
 const loading = ref(false);
-const loginIndex = ref(0);
+const loginForm = reactive({ account: '', password: '' });
+const publicAgencies = ref([]);
 
 const registerForm = reactive({
   name: '',
@@ -91,47 +94,41 @@ const registerForm = reactive({
   passwordConfirm: ''
 });
 
-// 已有红娘列表（用于一键登录与注册机构选择）
-const matchmakers = computed(() => appStore.matchmakers);
-const agencies = computed(() => appStore.agencies);
-
-const loginOptions = computed(() => {
-  return matchmakers.value.map((m) => {
-    const agency = agencies.value.find((a) => a.id === m.agencyId);
-    return {
-      value: m.id,
-      label: `${m.name} [${m.code}]（${agency?.name || '未知机构'}）`
-    };
-  });
-});
-
-const matchmakerOptions = computed(() => loginOptions.value.map((item) => item.label));
-
-const agencyOptions = computed(() => agencies.value.map((a) => `${a.name}（${a.city}）`));
+// 注册页只读取机构公开字段；登录和工作台数据仍走鉴权接口。
+const agencies = computed(() => publicAgencies.value);
+const agencyOptions = computed(() => agencies.value.map((agency) => `${agency.name}（${agency.city || '未注明城市'}）`));
 const agencyIndex = ref(0);
 
-onShow(() => {
-  appStore.fetchState();
-});
-
-const handleLoginChange = (e) => {
-  loginIndex.value = e.detail.value;
+const loadPublicAgencies = async () => {
+  try {
+    const response = await getPublicAgenciesApi();
+    publicAgencies.value = response.data?.list || [];
+    if (!registerForm.agencyId && publicAgencies.value.length) {
+      registerForm.agencyId = publicAgencies.value[0].id;
+    }
+  } catch (error) {
+    publicAgencies.value = [];
+  }
 };
 
-const handleAgencyChange = (e) => {
-  agencyIndex.value = e.detail.value;
+onShow(() => {
+  void loadPublicAgencies();
+});
+
+const handleAgencyChange = (event) => {
+  agencyIndex.value = event.detail.value;
   registerForm.agencyId = agencies.value[agencyIndex.value]?.id || '';
 };
 
 const handleLogin = async () => {
-  const option = loginOptions.value[loginIndex.value];
-  if (!option) {
-    uni.showToast({ title: '暂无可选红娘', icon: 'none' });
+  const account = loginForm.account.trim();
+  if (!account || !loginForm.password) {
+    uni.showToast({ title: '请输入账号和密码', icon: 'none' });
     return;
   }
   loading.value = true;
   try {
-    const res = await matchmakerLoginApi({ matchmakerId: option.value });
+    const res = await matchmakerLoginApi({ account, password: loginForm.password });
     const token = res.data?.token || res.token;
     const matchmaker = res.data?.matchmaker || res.matchmaker;
     if (token && matchmaker) {
@@ -152,7 +149,7 @@ const handleLogin = async () => {
 };
 
 const handleRegister = async () => {
-  const { name, phone, email, code, password, passwordConfirm } = registerForm;
+  const { name, agencyId, phone, email, code, password, passwordConfirm } = registerForm;
   if (!name) {
     uni.showToast({ title: '请输入姓名', icon: 'none' });
     return;
@@ -165,6 +162,11 @@ const handleRegister = async () => {
     uni.showToast({ title: '请输入合法的邮箱地址', icon: 'none' });
     return;
   }
+  const normalizedCode = code.trim().toUpperCase();
+  if (!/^[A-Z0-9_-]{3,32}$/.test(normalizedCode)) {
+    uni.showToast({ title: '红娘识别码需为3-32位字母、数字、下划线或连字符', icon: 'none' });
+    return;
+  }
   if (password.length < 6) {
     uni.showToast({ title: '登录密码至少 6 位', icon: 'none' });
     return;
@@ -174,13 +176,12 @@ const handleRegister = async () => {
     return;
   }
 
-  const agency = agencies.value[agencyIndex.value];
   loading.value = true;
   try {
     const res = await matchmakerRegisterApi({
       name,
-      agencyId: agency?.id || null,
-      code: code.toUpperCase(),
+      agencyId: agencyId || null,
+      code: normalizedCode,
       phone,
       email,
       password
